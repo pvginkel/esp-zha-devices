@@ -1,0 +1,8 @@
+version: "0.1.0"
+description: ZigBee Home Automation Devices for the ESP32
+url: https://github.com/pvginkel/esp-zha-devices
+dependencies:
+  idf: ">=5.3"
+files:
+  exclude:
+    - ".github"
