@@ -3,6 +3,8 @@ description: ZigBee Home Automation Devices for the ESP32
 url: https://github.com/pvginkel/esp-zha-devices
 dependencies:
   idf: ">=5.3"
+  espressif/esp-zboss-lib: "~1.6.0"
+  espressif/esp-zigbee-lib: "~1.6.0"
 files:
   exclude:
     - ".github"
