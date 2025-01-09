@@ -1,9 +1,10 @@
 #pragma once
 
 #include "sdkconfig.h"
+#include "soc/soc_caps.h"
 
-#if CONFIG_ZB_ENABLED != 1
-#error ZigBee has not been configured. Please review the sdkconfig.defaults in this project.
+#if !SOC_IEEE802154_SUPPORTED || !CONFIG_ZB_ENABLED
+#error SOC must support IEEE802154 and ZigBee must be enabled.
 #endif
 
 #include <math.h>

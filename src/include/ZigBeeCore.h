@@ -3,18 +3,15 @@
 
 #pragma once
 
-#include "sdkconfig.h"
-#include "soc/soc_caps.h"
-
-#if SOC_IEEE802154_SUPPORTED && CONFIG_ZB_ENABLED
-
 #include <list>
 
-#include "ZigbeeEP.h"
+#include "ZigBeeEndpoint.h"
 #include "esp_zigbee_core.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "zdo/esp_zigbee_zdo_common.h"
 
-class ZigbeeEP;
+class ZigBeeEndpoint;
 
 typedef void (*voidFuncPtr)(void);
 typedef void (*voidFuncPtrArg)(void *);
@@ -65,7 +62,7 @@ typedef enum {
         }                                                                                         \
     }
 
-class ZigbeeCore {
+class ZigBeeCore {
 private:
     esp_zb_radio_config_t _radio_config;
     esp_zb_host_config_t _host_config;
@@ -91,10 +88,10 @@ private:
     static void bindingTableCb(const esp_zb_zdo_binding_table_info_t *table_info, void *user_ctx);
 
 public:
-    ZigbeeCore();
-    ~ZigbeeCore();
+    ZigBeeCore();
+    ~ZigBeeCore();
 
-    std::list<ZigbeeEP *> ep_objects;
+    std::list<ZigBeeEndpoint *> ep_objects;
 
     bool begin(zigbee_role_t role = ZIGBEE_END_DEVICE, bool erase_nvs = false);
     bool begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
@@ -104,8 +101,8 @@ public:
     bool connected() { return _connected; }
     zigbee_role_t getRole() { return _role; }
 
-    void addEndpoint(ZigbeeEP *ep);
-    // void removeEndpoint(ZigbeeEP *ep);
+    void addEndpoint(ZigBeeEndpoint *ep);
+    // void removeEndpoint(ZigBeeEndpoint *ep);
 
     void setRadioConfig(esp_zb_radio_config_t config);
     esp_zb_radio_config_t getRadioConfig();
@@ -138,6 +135,4 @@ public:
     friend void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);
 };
 
-extern ZigbeeCore Zigbee;
-
-#endif
+extern ZigBeeCore ZigBee;

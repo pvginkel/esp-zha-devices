@@ -3,9 +3,11 @@
 
 #pragma once
 
-#include "ZigbeeCore.h"
-
-#if SOC_IEEE802154_SUPPORTED && CONFIG_ZB_ENABLED
+#include "ZigBeeCore.h"
+#include "esp_zigbee_type.h"
+#include "zcl/esp_zigbee_zcl_command.h"
+#include "zcl/esp_zigbee_zcl_common.h"
+#include "zdo/esp_zigbee_zdo_command.h"
 
 /* Useful defines */
 #define ZB_CMD_TIMEOUT 10000  // 10 seconds
@@ -52,10 +54,10 @@ typedef enum {
 } zb_power_source_t;
 
 /* Zigbee End Device Class */
-class ZigbeeEP {
+class ZigBeeEndpoint {
 public:
-    ZigbeeEP(uint8_t endpoint = 10);
-    ~ZigbeeEP();
+    ZigBeeEndpoint(uint8_t endpoint = 10);
+    ~ZigBeeEndpoint();
 
     // Set ep config and cluster list
     void setEpConfig(esp_zb_endpoint_config_t ep_config, esp_zb_cluster_list_t *cluster_list) {
@@ -67,7 +69,6 @@ public:
     uint8_t getEndpoint() { return _endpoint; }
 
     void printBoundDevices();
-    void printBoundDevices(Print &print);
 
     std::list<zb_device_params_t *> getBoundDevices() const { return _bound_devices; }
 
@@ -117,7 +118,5 @@ protected:
         _bound_devices.push_back(device);
         _is_bound = true;
     }
-    friend class ZigbeeCore;
+    friend class ZigBeeCore;
 };
-
-#endif
