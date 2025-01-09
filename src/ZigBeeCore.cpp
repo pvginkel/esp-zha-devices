@@ -5,6 +5,8 @@
 
 #include "ZigBeeCore.h"
 
+#include "ZigBeeHandlers.h"
+
 LOG_TAG(ZigBeeCore);
 
 #define ZB_INIT_TIMEOUT 30000  // 30 seconds
@@ -31,9 +33,6 @@ ZigBeeCore::ZigBeeCore() {
     }
 }
 ZigBeeCore::~ZigBeeCore() {}
-
-// forward declaration
-static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message);
 
 bool ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
     if (!zigbeeInit(role_cfg, erase_nvs)) {

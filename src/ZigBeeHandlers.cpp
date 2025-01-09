@@ -15,8 +15,7 @@ static esp_err_t zb_configure_report_resp_handler(const esp_zb_zcl_cmd_config_re
 static esp_err_t zb_cmd_default_resp_handler(const esp_zb_zcl_cmd_default_resp_message_t *message);
 
 // ZigBee action handlers
-[[maybe_unused]]
-static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message) {
+esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message) {
     esp_err_t ret = ESP_OK;
     switch (callback_id) {
         case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
