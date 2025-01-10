@@ -25,56 +25,40 @@ ZigBeeCore::ZigBeeCore() {
     _connected = false;
     _scan_duration = 3;  // default scan duration
     _rx_on_when_idle = true;
-    if (!lock) {
-        lock = xSemaphoreCreateBinary();
-        if (lock == NULL) {
-            ESP_LOGE(TAG, "Semaphore creation failed");
-        }
-    }
 }
 ZigBeeCore::~ZigBeeCore() {}
 
-bool ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
-    if (!zigbeeInit(role_cfg, erase_nvs)) {
+esp_err_t ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
+    auto err = zigbeeInit(role_cfg, erase_nvs);
+    if (err != ESP_OK) {
         ESP_LOGE(TAG, "ZigBeeCore begin failed");
-        return false;
+        return err;
     }
     _role = (zigbee_role_t)role_cfg->esp_zb_role;
-    if (xSemaphoreTake(lock, ZB_INIT_TIMEOUT) != pdTRUE) {
-        ESP_LOGE(TAG, "ZigBeeCore begin timeout");
-    }
-    return started();
+    return ESP_OK;
 }
 
-bool ZigBeeCore::begin(zigbee_role_t role, bool erase_nvs) {
-    bool status = true;
+esp_err_t ZigBeeCore::begin(zigbee_role_t role, bool erase_nvs) {
     switch (role) {
         case ZIGBEE_COORDINATOR: {
             _role = ZIGBEE_COORDINATOR;
             esp_zb_cfg_t zb_nwk_cfg = ZIGBEE_DEFAULT_COORDINATOR_CONFIG();
-            status = zigbeeInit(&zb_nwk_cfg, erase_nvs);
-            break;
+            return zigbeeInit(&zb_nwk_cfg, erase_nvs);
         }
         case ZIGBEE_ROUTER: {
             _role = ZIGBEE_ROUTER;
             esp_zb_cfg_t zb_nwk_cfg = ZIGBEE_DEFAULT_ROUTER_CONFIG();
-            status = zigbeeInit(&zb_nwk_cfg, erase_nvs);
-            break;
+            return zigbeeInit(&zb_nwk_cfg, erase_nvs);
         }
         case ZIGBEE_END_DEVICE: {
             _role = ZIGBEE_END_DEVICE;
             esp_zb_cfg_t zb_nwk_cfg = ZIGBEE_DEFAULT_ED_CONFIG();
-            status = zigbeeInit(&zb_nwk_cfg, erase_nvs);
-            break;
+            return zigbeeInit(&zb_nwk_cfg, erase_nvs);
         }
         default:
             ESP_LOGE(TAG, "Invalid ZigBee Role");
-            return false;
+            return ESP_ERR_INVALID_ARG;
     }
-    if (!status || xSemaphoreTake(lock, ZB_INIT_TIMEOUT) != pdTRUE) {
-        ESP_LOGE(TAG, "ZigBeeCore begin failed or timeout");
-    }
-    return started();
 }
 
 void ZigBeeCore::addEndpoint(ZigBeeEndpoint *ep) {
@@ -105,7 +89,7 @@ static void esp_zb_task(void *pvParameters) {
 }
 
 // ZigBee core init function
-bool ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
+esp_err_t ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
     // ZigBee platform configuration
     esp_zb_platform_config_t platform_config = {
         .radio_config = _radio_config,
@@ -130,7 +114,7 @@ bool ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
         err = esp_zb_device_register(_zb_ep_list);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register ZigBee EPs");
-            return false;
+            return err;
         }
 
         // print the list of ZigBee EPs from ep_objects
@@ -148,7 +132,7 @@ bool ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
     err = esp_zb_set_primary_network_channel_set(_primary_channel_mask);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set primary network channel mask");
-        return false;
+        return err;
     }
 
     // Erase NVRAM before creating connection to new Coordinator
@@ -159,7 +143,7 @@ bool ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
     // Create ZigBee task and start ZigBee stack
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
-    return true;
+    return ESP_OK;
 }
 
 void ZigBeeCore::setRadioConfig(esp_zb_radio_config_t config) { _radio_config = config; }
@@ -220,12 +204,12 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                         ESP_LOGI(TAG, "Start network steering");
                         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
                         ZigBee._started = true;
-                        xSemaphoreGive(ZigBee.lock);
+                        ZigBee._has_connected.call();
                     }
                 } else {
                     ESP_LOGI(TAG, "Device rebooted");
                     ZigBee._started = true;
-                    xSemaphoreGive(ZigBee.lock);
+                    ZigBee._has_connected.call();
                     if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR && ZigBee._open_network > 0) {
                         ESP_LOGI(TAG, "Opening network for joining for %d seconds", ZigBee._open_network);
                         esp_zb_bdb_open_network(ZigBee._open_network);
@@ -267,7 +251,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                     ESP_LOGI(TAG, "Network steering started");
                 }
                 ZigBee._started = true;
-                xSemaphoreGive(ZigBee.lock);
+                ZigBee._has_connected.call();
             } else {
                 if (err_status == ESP_OK) {
                     esp_zb_ieee_addr_t extended_pan_id;
@@ -279,7 +263,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                         extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
                         extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
                         esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
+                    ZigBee._started = true;
                     ZigBee._connected = true;
+                    ZigBee._has_connected.call();
                 } else {
                     ESP_LOGI(TAG, "Network steering was not successful (status: %s)", esp_err_to_name(err_status));
                     esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb,

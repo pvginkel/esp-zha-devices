@@ -109,7 +109,7 @@ bool Debouncer::fell() const { return !getStateFlag(DEBOUNCED_STATE) && getState
 // BOUNCE //
 ////////////
 
-Bounce::Bounce() : pin(0) {}
+Bounce::Bounce() : pin(0), inverted(false) {}
 
 void Bounce::attach(int pin) {
     this->pin = pin;

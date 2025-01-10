@@ -54,15 +54,17 @@ void Light<InterpolateAlgorithm>::reconfigure(float minimumLevel, float maximumL
 }
 
 template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::begin(uint8_t pin) {
+void Light<InterpolateAlgorithm>::begin(ledc_channel_t pin) {
     _pin = pin;
 
-    gpio_config_t i_conf = {
-        .pin_bit_mask = 1ull << pin,
-        .mode = GPIO_MODE_OUTPUT,
-    };
+    // TODO
+    //
+    // gpio_config_t i_conf = {
+    //     .pin_bit_mask = 1ull << pin,
+    //     .mode = GPIO_MODE_OUTPUT,
+    // };
 
-    ESP_ERROR_CHECK(gpio_config(&i_conf));
+    // ESP_ERROR_CHECK(gpio_config(&i_conf));
 
     resetTransition();
 }
@@ -136,7 +138,7 @@ void Light<InterpolateAlgorithm>::updatePinValue() {
 
     ESP_LOGD(TAG, "Setting light pin to %f scaled level %f", realValue, _actualLevel);
 
-    ESP_ERROR_CHECK(gpio_set_level(_pin, realValue));
+    ESP_ERROR_CHECK(ledc_set_level(_pin, realValue));
 }
 
 template <class InterpolateAlgorithm>

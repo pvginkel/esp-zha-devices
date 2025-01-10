@@ -26,13 +26,12 @@ class StatusControl {
     bool _resetRaised = false;
     uint32_t _fadePeriod;
     int _remainingReported = -1;
-    bool _connectingLedOn = false;
+    float _lastLevel;
 
 public:
     StatusControl(uint32_t initialDelay = 1000, int steps = 4, uint32_t stepTime = 1000, uint32_t fadePeriod = 1000)
         : _initialDelay(initialDelay), _steps(steps), _stepTime(stepTime), _fadePeriod(fadePeriod) {}
 
-    void setLed(int pin);
     void setBounce(Bounce bounce);
     void setConnected(connection_status_t connected);
     void reportRemaining(int remaining);
@@ -40,5 +39,8 @@ public:
     void onClick(std::function<void(void)> func) { _click.add(func); }
     void onReset(std::function<void(void)> func) { _reset.add(func); }
     void onResetCountdown(std::function<void(int)> func) { _resetCountdown.add(func); }
-    void onLedBrightnessChanged(std::function<void(int)> func) { _ledBrightnessChanged.add(func); }
+    void onLedBrightnessChanged(std::function<void(float)> func) { _ledBrightnessChanged.add(func); }
+
+private:
+    void setLevel(float level);
 };

@@ -5,10 +5,10 @@
 
 #include <list>
 
+#include "Callback.h"
 #include "ZigBeeEndpoint.h"
 #include "esp_zigbee_core.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 #include "zdo/esp_zigbee_zdo_common.h"
 
 class ZigBeeEndpoint;
@@ -78,9 +78,9 @@ private:
 
     uint8_t _open_network;
     zigbee_scan_result_t *_scan_result;
-    SemaphoreHandle_t lock;
+    Callback<void> _has_connected;
 
-    bool zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs);
+    esp_err_t zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs);
     static void scanCompleteCallback(esp_zb_zdp_status_t zdo_status, uint8_t count,
                                      esp_zb_network_descriptor_t *nwk_descriptor);
     const char *getDeviceTypeString(esp_zb_ha_standard_devices_t deviceId);
@@ -93,8 +93,8 @@ public:
 
     std::list<ZigBeeEndpoint *> ep_objects;
 
-    bool begin(zigbee_role_t role = ZIGBEE_END_DEVICE, bool erase_nvs = false);
-    bool begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
+    esp_err_t begin(zigbee_role_t role = ZIGBEE_END_DEVICE, bool erase_nvs = false);
+    esp_err_t begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
     // bool end();
 
     bool started() { return _started; }
@@ -130,6 +130,8 @@ public:
     void scanDelete();
 
     void factoryReset();
+
+    void onHasConnected(std::function<void(void)> func) { _has_connected.add(func); }
 
     // Friend function declaration to allow access to private members
     friend void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);

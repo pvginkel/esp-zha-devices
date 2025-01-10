@@ -197,6 +197,8 @@ public:
     */
     void attach(int pin);
 
+    void setInverted(bool inverted = true) { this->inverted = inverted; }
+
     Bounce(uint8_t pin, unsigned long interval_millis) : Bounce() {
         attach(pin);
         interval(interval_millis);
@@ -234,7 +236,7 @@ public:
 protected:
     uint8_t pin;
 
-    virtual bool readCurrentState() { return gpio_get_level((gpio_num_t)pin); }
+    virtual bool readCurrentState() { return gpio_get_level((gpio_num_t)pin) ^ inverted; }
     virtual void setPinMode(int pin, gpio_mode_t mode) {
         gpio_config_t config = {
             .pin_bit_mask = 1ull << pin,
@@ -242,6 +244,9 @@ protected:
         };
         gpio_config(&config);
     }
+
+private:
+    bool inverted;
 };
 
 /**

@@ -39,9 +39,8 @@ void StatusControl::update() {
         if (!_isHigh) {
             _lastStatusChange = currentMillis;
             _isHigh = true;
-            _connectingLedOn = true;
             _click.call();
-            _ledBrightnessChanged.call(1.0f);
+            setLevel(1);
         }
         if (_bounce.currentDuration() > _initialDelay) {
             auto duration = _bounce.currentDuration() - _initialDelay;
@@ -52,7 +51,7 @@ void StatusControl::update() {
                 if (!_resetRaised) {
                     _resetRaised = true;
 
-                    _ledBrightnessChanged.call(0);
+                    setLevel(0);
 
                     reportRemaining(remaining);
 
@@ -67,7 +66,7 @@ void StatusControl::update() {
         _resetRaised = false;
         _lastStatusChange = currentMillis;
         reportRemaining(-1);
-        _ledBrightnessChanged.call(0);
+        setLevel(0);
     }
 
     // Blink progressively shorter while the button is down and the
@@ -88,7 +87,7 @@ void StatusControl::update() {
 
         if (progress >= nextToggle) {
             _lastStatusChange = currentMillis;
-            _ledBrightnessChanged.call(_connectingLedOn ? 1.0f : 0.0f);
+            setLevel(_lastLevel ? 0 : 1);
         }
     } else if (_connected == CONNECTION_STATUS_CONNECTING) {
         // Fade the led in and out while we're connecting.
@@ -101,8 +100,15 @@ void StatusControl::update() {
         if (inverse) {
             level = 1.0f - level;
         }
-        _ledBrightnessChanged.call(level);
+        setLevel(level);
     } else {
-        _ledBrightnessChanged.call(0);
+        setLevel(0);
+    }
+}
+
+void StatusControl::setLevel(float level) {
+    if (level != _lastLevel) {
+        _lastLevel = level;
+        _ledBrightnessChanged.call(level);
     }
 }
