@@ -194,8 +194,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
         case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:  // Common
         case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:       // Common
             if (err_status == ESP_OK) {
-                ESP_LOGI(TAG, "Device started up in %s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : "non");
                 if (esp_zb_bdb_is_factory_new()) {
+                    ESP_LOGI(TAG, "Device started up in factory-reset mode");
+
                     // Role specific code
                     if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR) {
                         ESP_LOGI(TAG, "Start network formation");
@@ -203,13 +204,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                     } else {
                         ESP_LOGI(TAG, "Start network steering");
                         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
+
                         ZigBee._started = true;
                         ZigBee._has_connected.call();
                     }
                 } else {
                     ESP_LOGI(TAG, "Device rebooted");
+
                     ZigBee._started = true;
                     ZigBee._has_connected.call();
+
                     if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR && ZigBee._open_network > 0) {
                         ESP_LOGI(TAG, "Opening network for joining for %d seconds", ZigBee._open_network);
                         esp_zb_bdb_open_network(ZigBee._open_network);

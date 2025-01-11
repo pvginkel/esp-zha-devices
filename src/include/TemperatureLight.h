@@ -2,8 +2,7 @@
 
 #include "Light.h"
 
-template <class InterpolateAlgorithm>
-class TemperatureLight {
+class TemperatureLightBase {
     Callback<float> _levelChanged;
     Callback<uint16_t> _temperatureChanged;
     LinearLight _cold;
@@ -16,7 +15,7 @@ class TemperatureLight {
     uint16_t _temperature;
 
 public:
-    TemperatureLight(uint16_t minimumTemperature, uint16_t maximumTemperature)
+    TemperatureLightBase(uint16_t minimumTemperature, uint16_t maximumTemperature)
         : _minimumTemperature(minimumTemperature),
           _maximumTemperature(maximumTemperature),
           _minimumLevel(0.0f),
@@ -64,8 +63,21 @@ public:
         _warm.resetTransition();
     }
 
+protected:
+    virtual float interpolate(float level) = 0;
+
 private:
     void updateLevelAndTemperature(uint32_t time = 0);
+};
+
+template <class InterpolateAlgorithm>
+class TemperatureLight : public TemperatureLightBase {
+public:
+    TemperatureLight(uint16_t minimumTemperature, uint16_t maximumTemperature)
+        : TemperatureLightBase(minimumTemperature, maximumTemperature) {}
+
+protected:
+    float interpolate(float level) override { return InterpolateAlgorithm::interpolate(level); }
 };
 
 typedef TemperatureLight<CIE1931InterpolateAlgorithm> NaturalTemperatureLight;

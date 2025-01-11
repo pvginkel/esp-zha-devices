@@ -4,8 +4,7 @@
 
 LOG_TAG(TemperatureLight);
 
-template <class InterpolateAlgorithm>
-void TemperatureLight<InterpolateAlgorithm>::setTemperature(uint16_t temperature, uint32_t time) {
+void TemperatureLightBase::setTemperature(uint16_t temperature, uint32_t time) {
     ESP_LOGD(TAG, "Setting temperature to %" PRIu16 " minimum %" PRIu16 " maximum %" PRIu16, temperature,
              _minimumTemperature, _maximumTemperature);
 
@@ -23,8 +22,7 @@ void TemperatureLight<InterpolateAlgorithm>::setTemperature(uint16_t temperature
     _temperatureChanged.call(temperature);
 }
 
-template <class InterpolateAlgorithm>
-void TemperatureLight<InterpolateAlgorithm>::updateLevelAndTemperature(uint32_t time) {
+void TemperatureLightBase::updateLevelAndTemperature(uint32_t time) {
     const auto range = float(_maximumTemperature - _minimumTemperature);
     const auto offset = float(_temperature - _minimumTemperature) / range;
 
@@ -33,7 +31,7 @@ void TemperatureLight<InterpolateAlgorithm>::updateLevelAndTemperature(uint32_t 
 
     auto mix = offset * 120.0f;
 
-    auto interpolatedLevel = InterpolateAlgorithm::interpolate(_level);
+    auto interpolatedLevel = interpolate(_level);
     auto scaledLevel = scaleLightLevel(interpolatedLevel, _minimumLevel, _maximumLevel);
     auto color = hsi2rgb(mix, 100, scaledLevel);
 

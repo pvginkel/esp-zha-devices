@@ -27,8 +27,7 @@ uint16_t kelvin2mired(uint16_t kelvin);
 
 float scaleLightLevel(float level, float minimumLevel, float maximumLevel);
 
-template <class InterpolateAlgorithm>
-class Light {
+class LightBase {
     Callback<float> _levelChanged;
     Callback<float> _dutyCycleChanged;
 
@@ -42,7 +41,7 @@ class Light {
     uint32_t _transitionTime{};
 
 public:
-    Light() {}
+    LightBase() {}
 
     void reconfigure(float minimumLevel, float maximumLevel, uint32_t time = 0);
     void begin();
@@ -57,7 +56,15 @@ public:
 private:
     void updateDutyCycle();
     float getScaledLevel() { return scaleLightLevel(_level, _minimumLevel, _maximumLevel); }
-    static uint8_t interpolate(float level);
+
+protected:
+    virtual float interpolate(float level) = 0;
+};
+
+template <class InterpolateAlgorithm>
+class Light : public LightBase {
+protected:
+    float interpolate(float level) override { return InterpolateAlgorithm::interpolate(level); }
 };
 
 class LinearInterpolateAlgorithm {

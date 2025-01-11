@@ -43,8 +43,7 @@ float scaleLightLevel(float level, float minimumLevel, float maximumLevel) {
     return level;
 }
 
-template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::reconfigure(float minimumLevel, float maximumLevel, uint32_t time) {
+void LightBase::reconfigure(float minimumLevel, float maximumLevel, uint32_t time) {
     auto level = getLevel();
 
     _minimumLevel = minimumLevel;
@@ -53,13 +52,9 @@ void Light<InterpolateAlgorithm>::reconfigure(float minimumLevel, float maximumL
     setLevel(level, time);
 }
 
-template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::begin() {
-    resetTransition();
-}
+void LightBase::begin() { resetTransition(); }
 
-template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::update() {
+void LightBase::update() {
     if (!_transitionStart) {
         return;
     }
@@ -83,8 +78,7 @@ void Light<InterpolateAlgorithm>::update() {
     }
 }
 
-template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::setLevel(float level, uint32_t time) {
+void LightBase::setLevel(float level, uint32_t time) {
     if (level < 0.0f) {
         level = 0.0f;
     }
@@ -107,8 +101,7 @@ void Light<InterpolateAlgorithm>::setLevel(float level, uint32_t time) {
     _levelChanged.call(_level);
 }
 
-template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::resetTransition() {
+void LightBase::resetTransition() {
     auto scaledLevel = getScaledLevel();
 
     _startLevel = scaledLevel;
@@ -121,26 +114,12 @@ void Light<InterpolateAlgorithm>::resetTransition() {
     updateDutyCycle();
 }
 
-template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::updateDutyCycle() {
-    const auto realValue = InterpolateAlgorithm::interpolate(_actualLevel);
+void LightBase::updateDutyCycle() {
+    const auto realValue = interpolate(_actualLevel);
 
     ESP_LOGD(TAG, "Setting light pin to %f duty cycle %f", _actualLevel, realValue);
 
     _dutyCycleChanged.call(realValue);
-}
-
-template <class InterpolateAlgorithm>
-uint8_t Light<InterpolateAlgorithm>::interpolate(float level) {
-    const auto result = int(InterpolateAlgorithm::interpolate(level) * 256.0f);
-
-    if (result < 0) {
-        return 0;
-    }
-    if (result > 255) {
-        return 255;
-    }
-    return uint8_t(result);
 }
 
 float CIE1931InterpolateAlgorithm::interpolate(float level) {
