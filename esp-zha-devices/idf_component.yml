@@ -1,10 +1,12 @@
 version: "0.1.0"
 description: ZigBee Home Automation Devices for the ESP32
-url: https://github.com/pvginkel/esp-zha-devices
+url: https://github.com/pvginkel/esp-zha-libs
 dependencies:
   idf: ">=5.3"
   espressif/esp-zboss-lib: "~1.6.0"
   espressif/esp-zigbee-lib: "~1.6.0"
+  esp-support:
+    path: ../esp-support
 files:
   exclude:
     - ".github"
