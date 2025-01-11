@@ -54,24 +54,13 @@ void Light<InterpolateAlgorithm>::reconfigure(float minimumLevel, float maximumL
 }
 
 template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::begin(ledc_channel_t pin) {
-    _pin = pin;
-
-    // TODO
-    //
-    // gpio_config_t i_conf = {
-    //     .pin_bit_mask = 1ull << pin,
-    //     .mode = GPIO_MODE_OUTPUT,
-    // };
-
-    // ESP_ERROR_CHECK(gpio_config(&i_conf));
-
+void Light<InterpolateAlgorithm>::begin() {
     resetTransition();
 }
 
 template <class InterpolateAlgorithm>
 void Light<InterpolateAlgorithm>::update() {
-    if (_pin == -1 || !_transitionStart) {
+    if (!_transitionStart) {
         return;
     }
 
@@ -90,7 +79,7 @@ void Light<InterpolateAlgorithm>::update() {
         _actualLevel = level;
         _lastUpdate = currentMillis;
 
-        updatePinValue();
+        updateDutyCycle();
     }
 }
 
@@ -129,16 +118,16 @@ void Light<InterpolateAlgorithm>::resetTransition() {
     _actualLevel = scaledLevel;
     _lastUpdate = esp_timer_get_time() / 1000;
 
-    updatePinValue();
+    updateDutyCycle();
 }
 
 template <class InterpolateAlgorithm>
-void Light<InterpolateAlgorithm>::updatePinValue() {
-    auto realValue = interpolate(_actualLevel);
+void Light<InterpolateAlgorithm>::updateDutyCycle() {
+    const auto realValue = InterpolateAlgorithm::interpolate(_actualLevel);
 
-    ESP_LOGD(TAG, "Setting light pin to %f scaled level %f", realValue, _actualLevel);
+    ESP_LOGD(TAG, "Setting light pin to %f duty cycle %f", _actualLevel, realValue);
 
-    ESP_ERROR_CHECK(ledc_set_level(_pin, realValue));
+    _dutyCycleChanged.call(realValue);
 }
 
 template <class InterpolateAlgorithm>

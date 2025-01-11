@@ -6,8 +6,8 @@ LOG_TAG(TemperatureLight);
 
 template <class InterpolateAlgorithm>
 void TemperatureLight<InterpolateAlgorithm>::setTemperature(uint16_t temperature, uint32_t time) {
-    DEBUG(F("Setting temperature to "), temperature, F(" minimum "), _minimumTemperature, F(" maximum "),
-          _maximumTemperature);
+    ESP_LOGD(TAG, "Setting temperature to %" PRIu16 " minimum %" PRIu16 " maximum %" PRIu16, temperature,
+             _minimumTemperature, _maximumTemperature);
 
     if (temperature < _minimumTemperature) {
         temperature = _minimumTemperature;

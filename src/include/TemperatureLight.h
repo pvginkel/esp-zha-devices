@@ -31,9 +31,9 @@ public:
         updateLevelAndTemperature(time);
     }
 
-    void begin(ledc_channel_t coldPin, ledc_channel_t warmPin) {
-        _cold.begin(coldPin);
-        _warm.begin(warmPin);
+    void begin() {
+        _cold.begin();
+        _warm.begin();
     }
 
     bool isOn() const { return _level > 0; }
@@ -41,6 +41,8 @@ public:
     uint16_t getTemperature() const { return _temperature; }
     void onLevelChanged(std::function<void(float)> func) { _levelChanged.add(func); }
     void onTemperatureChanged(std::function<void(uint16_t)> func) { _temperatureChanged.add(func); }
+    void onColdDutyCycleChanged(std::function<void(float)> func) { _cold.onDutyCycleChanged(func); }
+    void onWarmDutyCycleChanged(std::function<void(float)> func) { _warm.onDutyCycleChanged(func); }
 
     void update() {
         _cold.update();

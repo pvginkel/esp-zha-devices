@@ -30,8 +30,8 @@ float scaleLightLevel(float level, float minimumLevel, float maximumLevel);
 template <class InterpolateAlgorithm>
 class Light {
     Callback<float> _levelChanged;
+    Callback<float> _dutyCycleChanged;
 
-    ledc_channel_t _pin{(ledc_channel_t)-1};
     float _level{};
     float _actualLevel{};
     float _startLevel{};
@@ -45,16 +45,17 @@ public:
     Light() {}
 
     void reconfigure(float minimumLevel, float maximumLevel, uint32_t time = 0);
-    void begin(ledc_channel_t pin);
+    void begin();
     bool isOn() { return _level > 0; }
     float getLevel() { return _level; }
     void onLevelChanged(std::function<void(float)> func) { _levelChanged.add(func); }
+    void onDutyCycleChanged(std::function<void(float)> func) { _dutyCycleChanged.add(func); }
     void update();
     void setLevel(float level, uint32_t time = 0);
     void resetTransition();
 
 private:
-    void updatePinValue();
+    void updateDutyCycle();
     float getScaledLevel() { return scaleLightLevel(_level, _minimumLevel, _maximumLevel); }
     static uint8_t interpolate(float level);
 };
