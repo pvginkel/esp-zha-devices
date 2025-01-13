@@ -4,6 +4,7 @@
 #include "support.h"
 
 #include "ZigBeeCore.h"
+#include "ZigBeeStream.h"
 
 LOG_TAG(ZigBeeHandlers);
 
@@ -54,11 +55,7 @@ static esp_err_t zb_attribute_set_handler(const esp_zb_zcl_set_attr_value_messag
     // List through all ZigBee EPs and call the callback function, with the message
     for (std::list<ZigBeeEndpoint *>::iterator it = ZigBee.ep_objects.begin(); it != ZigBee.ep_objects.end(); ++it) {
         if (message->info.dst_endpoint == (*it)->getEndpoint()) {
-            if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY) {
-                (*it)->zbIdentify(message);  // method zbIdentify implemented in the common EP class
-            } else {
-                (*it)->zbAttributeSet(message);  // method zbAttributeSet must be implemented in specific EP class
-            }
+            (*it)->zbAttributeSet(message);  // method zbAttributeSet must be implemented in specific EP class
         }
     }
     return ESP_OK;
@@ -149,4 +146,29 @@ static esp_err_t zb_cmd_default_resp_handler(const esp_zb_zcl_cmd_default_resp_m
              message->info.src_address.u.short_addr, message->info.src_endpoint, message->info.dst_endpoint,
              message->info.cluster, message->status_code);
     return ESP_OK;
+}
+
+bool zb_command_handler(uint8_t bufid) {
+    uint8_t response_buf[MAX_FRAME_DATA_SIZE];
+
+    zb_zcl_parsed_hdr_t *cmd_info = ZB_BUF_GET_PARAM(bufid, zb_zcl_parsed_hdr_t);
+
+    ZigBeeStream request((uint8_t *)zb_buf_begin(bufid), zb_buf_len(bufid));
+    ZigBeeStream response(response_buf, MAX_FRAME_DATA_SIZE);
+
+    ESP_LOGV(TAG, "Received command: cluster(0x%x), command(0x%x)", cmd_info->cluster_id, cmd_info->cmd_id);
+
+    // List through all ZigBee EPs and call the callback function, with the message
+    for (std::list<ZigBeeEndpoint *>::iterator it = ZigBee.ep_objects.begin(); it != ZigBee.ep_objects.end(); ++it) {
+        if (cmd_info->addr_data.common_data.dst_endpoint == (*it)->getEndpoint()) {
+            auto err = (*it)->zbCommand(cmd_info, request, response);
+            if (err == ESP_ERR_NOT_SUPPORTED) {
+                return false;
+            }
+            ESP_ERROR_CHECK_WITHOUT_ABORT(err);
+            return true;
+        }
+    }
+
+    return false;
 }

@@ -127,8 +127,10 @@ esp_err_t ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
             }
         }
     }
-    // Register ZigBee action handler
+    // Register ZigBee action & command handlers
     esp_zb_core_action_handler_register(zb_action_handler);
+    esp_zb_raw_command_handler_register(zb_command_handler);
+
     err = esp_zb_set_primary_network_channel_set(_primary_channel_mask);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set primary network channel mask");

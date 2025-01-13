@@ -4,10 +4,16 @@
 #pragma once
 
 #include "ZigBeeCore.h"
-#include "esp_zigbee_type.h"
-#include "zcl/esp_zigbee_zcl_command.h"
-#include "zcl/esp_zigbee_zcl_common.h"
-#include "zdo/esp_zigbee_zdo_command.h"
+#include "ZigBeeStream.h"
+
+// See https://github.com/espressif/arduino-esp32/issues/9745#issuecomment-2165478493.
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "zboss_api.h"
+#ifdef __cplusplus
+};
+#endif
 
 /* Useful defines */
 #define ZB_CMD_TIMEOUT 10000  // 10 seconds
@@ -94,14 +100,13 @@ public:
     virtual void zbAttributeSet(const esp_zb_zcl_set_attr_value_message_t *message) {};
     virtual void zbAttributeRead(uint16_t cluster_id, const esp_zb_zcl_attribute_t *attribute) {};
     virtual void zbReadBasicCluster(const esp_zb_zcl_attribute_t *attribute);  // already implemented
-    virtual void zbIdentify(const esp_zb_zcl_set_attr_value_message_t *message);
-
-    void onIdentify(void (*callback)(uint16_t)) { _on_identify = callback; }
+    virtual esp_err_t zbCommand(const zb_zcl_parsed_hdr_t *cmd_info, ZigBeeStream &request, ZigBeeStream &response) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
 
 private:
     char *_read_manufacturer;
     char *_read_model;
-    void (*_on_identify)(uint16_t time);
 
 protected:
     uint8_t _endpoint;

@@ -14,8 +14,18 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_zigbee_core.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+// See https://github.com/espressif/arduino-esp32/issues/9745#issuecomment-2165478493.
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "zboss_api.h"
+#ifdef __cplusplus
+};
+#endif
 
 #define LOG_TAG(v) [[maybe_unused]] static const char *TAG = #v
 

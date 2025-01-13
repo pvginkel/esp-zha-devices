@@ -11,6 +11,8 @@
 #include "freertos/FreeRTOS.h"
 #include "zdo/esp_zigbee_zdo_common.h"
 
+#define MAX_FRAME_DATA_SIZE 110
+
 class ZigBeeEndpoint;
 
 typedef void (*voidFuncPtr)(void);

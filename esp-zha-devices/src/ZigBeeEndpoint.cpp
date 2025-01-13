@@ -21,7 +21,6 @@ ZigBeeEndpoint::ZigBeeEndpoint(uint8_t endpoint) {
     ESP_LOGV(TAG, "Endpoint: %d", _endpoint);
     _ep_config.endpoint = 0;
     _cluster_list = nullptr;
-    _on_identify = nullptr;
     if (!lock) {
         lock = xSemaphoreCreateBinary();
         if (lock == NULL) {
@@ -221,16 +220,5 @@ void ZigBeeEndpoint::zbReadBasicCluster(const esp_zb_zcl_attribute_t *attribute)
         ESP_LOGI(TAG, "Peer Model is \"%s\"", string);
         _read_model = string;
         xSemaphoreGive(lock);
-    }
-}
-
-void ZigBeeEndpoint::zbIdentify(const esp_zb_zcl_set_attr_value_message_t *message) {
-    if (message->attribute.id == ESP_ZB_ZCL_CMD_IDENTIFY_IDENTIFY_ID &&
-        message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16) {
-        if (_on_identify != NULL) {
-            _on_identify(*(uint16_t *)message->attribute.data.value);
-        }
-    } else {
-        ESP_LOGW(TAG, "Other identify commands are not implemented yet.");
     }
 }
