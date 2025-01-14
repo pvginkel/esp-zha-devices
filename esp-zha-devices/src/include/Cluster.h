@@ -3,6 +3,15 @@
 #include "Attribute.h"
 #include "ZigBeeStream.h"
 
+// See https://github.com/espressif/arduino-esp32/issues/9745#issuecomment-2165478493.
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "zboss_api.h"
+#ifdef __cplusplus
+};
+#endif
+
 class ZigBeeEndpoint;
 
 enum class ClusterType : uint8_t { Input, Output };
