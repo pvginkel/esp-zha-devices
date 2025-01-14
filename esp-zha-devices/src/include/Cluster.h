@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Attribute.h"
+#include <vector>
+
 #include "ZigBeeStream.h"
 
 // See https://github.com/espressif/arduino-esp32/issues/9745#issuecomment-2165478493.
@@ -13,13 +14,17 @@ extern "C" {
 #endif
 
 class ZigBeeEndpoint;
+class Attribute;
 
 enum class ClusterType : uint8_t { Input, Output };
 
 class Device;
 
 class Cluster {
-    esp_zb_attribute_list_t* _attributes;
+    friend Attribute;
+
+    std::vector<Attribute*> _attributes;
+    esp_zb_attribute_list_t* _cluster;
     ZigBeeEndpoint* _endpoint;
     uint16_t _clusterId;
     ClusterType _type;

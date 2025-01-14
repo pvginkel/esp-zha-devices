@@ -2,7 +2,30 @@
 
 #include "Cluster.h"
 
+#include "Attribute.h"
 #include "ZigBeeEndpoint.h"
+
+Cluster::Cluster(uint16_t clusterId, ClusterType type) : _clusterId(clusterId), _type(type) {}
+
+Cluster::~Cluster() {
+    for (auto attribute : _attributes) {
+        delete attribute;
+    }
+}
+
+Attribute* Cluster::getAttributeById(uint16_t attributeId) {
+    for (auto attribute : _attributes) {
+        if (attribute->getAttributeId() == attributeId) {
+            return attribute;
+        }
+    }
+    return nullptr;
+}
+
+void Cluster::addAttribute(Attribute* attribute) {
+    attribute->_cluster = this;
+    _attributes.push_back(attribute);
+}
 
 esp_err_t Cluster::sendMessage(uint8_t endpointId, uint16_t commandId, const uint8_t* buf, uint16_t buf_len) {
     esp_zb_zcl_custom_cluster_cmd_req_t req{};

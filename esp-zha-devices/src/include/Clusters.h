@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Attribute.h"
 #include "Cluster.h"
 
 enum class GenBasicAttribute : uint16_t {
