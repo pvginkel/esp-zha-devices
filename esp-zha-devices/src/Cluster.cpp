@@ -27,6 +27,15 @@ Attribute* Cluster::getAttributeById(uint16_t attributeId) {
 void Cluster::addAttribute(Attribute* attribute) {
     attribute->_cluster = this;
     _attributes.push_back(attribute);
+    ESP_ERROR_CHECK(attribute->createValue());
+}
+
+esp_err_t Cluster::zbAttributeSet(const esp_zb_zcl_set_attr_value_message_t* message) {
+    const auto attribute = getAttributeById(message->attribute.id);
+    if (attribute) {
+        attribute->_valueChanged.call();
+    }
+    return ESP_OK;
 }
 
 esp_err_t Cluster::sendMessage(uint8_t endpointId, uint16_t commandId, const uint8_t* buf, uint16_t buf_len) {

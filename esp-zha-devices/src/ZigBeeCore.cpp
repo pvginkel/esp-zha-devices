@@ -5,14 +5,9 @@
 
 #include "ZigBeeCore.h"
 
-#include "ZigBeeHandlers.h"
-
 LOG_TAG(ZigBeeCore);
 
-#define ZB_INIT_TIMEOUT 30000  // 30 seconds
-
-extern "C" void zb_set_ed_node_descriptor(bool power_src, bool rx_on_when_idle, bool alloc_addr);
-static bool edBatteryPowered = false;
+ZigBeeCore ZigBee = ZigBeeCore();
 
 ZigBeeCore::ZigBeeCore() {
     _radio_config.radio_mode = ZB_RADIO_MODE_NATIVE;                   // Use the native 15.4 radio
@@ -26,6 +21,7 @@ ZigBeeCore::ZigBeeCore() {
     _scan_duration = 3;  // default scan duration
     _rx_on_when_idle = true;
 }
+
 ZigBeeCore::~ZigBeeCore() {}
 
 esp_err_t ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
@@ -35,6 +31,7 @@ esp_err_t ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
         return err;
     }
     _role = (zigbee_role_t)role_cfg->esp_zb_role;
+
     return ESP_OK;
 }
 
@@ -62,9 +59,9 @@ esp_err_t ZigBeeCore::begin(zigbee_role_t role, bool erase_nvs) {
 }
 
 void ZigBeeCore::addEndpoint(ZigBeeEndpoint *ep) {
-    ep_objects.push_back(ep);
+    _endpoints.push_back(ep);
 
-    ESP_LOGD(TAG, "Endpoint: %d, Device ID: 0x%04x", ep->_endpoint, ep->_device_id);
+    ESP_LOGI(TAG, "Adding endpoint: %d, device ID: 0x%04x", ep->_ep_config.endpoint, ep->_ep_config.app_device_id);
     // Register clusters and ep_list to the ZigBeeCore class's ep_list
     if (ep->_ep_config.endpoint == 0 || ep->_cluster_list == nullptr) {
         ESP_LOGE(TAG, "Endpoint config or Cluster list is not initialized, EP not added to ZigBeeCore's EP list");
@@ -74,18 +71,13 @@ void ZigBeeCore::addEndpoint(ZigBeeEndpoint *ep) {
     esp_zb_ep_list_add_ep(_zb_ep_list, ep->_cluster_list, ep->_ep_config);
 }
 
-static void esp_zb_task(void *pvParameters) {
-    esp_zb_bdb_set_scan_duration(ZigBee.getScanDuration());
-
-    /* initialize ZigBee stack */
-    ESP_ERROR_CHECK(esp_zb_start(false));
-
-    // NOTE: This is a workaround to make battery powered devices to be discovered as battery powered
-    if (((zigbee_role_t)ZigBee.getRole() == ZIGBEE_END_DEVICE) && edBatteryPowered) {
-        zb_set_ed_node_descriptor(0, ZigBee.getRxOnWhenIdle(), 1);
+ZigBeeEndpoint *ZigBeeCore::getEndpointById(uint8_t endpointId) {
+    for (const auto endpoint : _endpoints) {
+        if (endpoint->getEndpointId() == endpointId) {
+            return endpoint;
+        }
     }
-
-    esp_zb_stack_main_loop();
+    return nullptr;
 }
 
 // ZigBee core init function
@@ -107,7 +99,7 @@ esp_err_t ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
     esp_zb_init(zb_cfg);
 
     // Register all ZigBee EPs in list
-    if (ep_objects.empty()) {
+    if (_endpoints.empty()) {
         ESP_LOGW(TAG, "No ZigBee EPs to register");
     } else {
         ESP_LOGD(TAG, "Register all ZigBee EPs in list");
@@ -119,17 +111,17 @@ esp_err_t ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
 
         // print the list of ZigBee EPs from ep_objects
         ESP_LOGI(TAG, "List of registered ZigBee EPs:");
-        for (std::list<ZigBeeEndpoint *>::iterator it = ep_objects.begin(); it != ep_objects.end(); ++it) {
-            ESP_LOGI(TAG, "Device type: %s, Endpoint: %d, Device ID: 0x%04x", getDeviceTypeString((*it)->_device_id),
-                     (*it)->_endpoint, (*it)->_device_id);
-            if ((*it)->_power_source == ZB_POWER_SOURCE_BATTERY) {
-                edBatteryPowered = true;
-            }
+        for (const auto endpoint : _endpoints) {
+            ESP_LOGI(TAG, "Endpoint: %d, Device ID: 0x%04x", endpoint->_ep_config.endpoint,
+                     endpoint->_ep_config.app_device_id);
         }
     }
+
     // Register ZigBee action & command handlers
-    esp_zb_core_action_handler_register(zb_action_handler);
-    esp_zb_raw_command_handler_register(zb_command_handler);
+    esp_zb_core_action_handler_register([](esp_zb_core_action_callback_id_t callback_id, const void *message) {
+        return ZigBee.zbActionHandler(callback_id, message);
+    });
+    esp_zb_raw_command_handler_register([](uint8_t bufid) { return ZigBee.zbCommandHandler(bufid); });
 
     err = esp_zb_set_primary_network_channel_set(_primary_channel_mask);
     if (err != ESP_OK) {
@@ -143,9 +135,22 @@ esp_err_t ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
     }
 
     // Create ZigBee task and start ZigBee stack
-    xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+    xTaskCreate(zbTask, "Zigbee_main", 4096, NULL, 5, NULL);
 
     return ESP_OK;
+}
+
+void ZigBeeCore::zbTask(void *pvParameters) {
+#if CONFIG_ZB_DEBUG_MODE
+    esp_zb_set_trace_level_mask(ESP_ZB_TRACE_LEVEL_DEBUG, ESP_ZB_TRACE_SUBSYSTEM_MAC | ESP_ZB_TRACE_SUBSYSTEM_APP);
+#endif
+
+    esp_zb_bdb_set_scan_duration(ZigBee.getScanDuration());
+
+    /* initialize ZigBee stack */
+    ESP_ERROR_CHECK(esp_zb_start(false));
+
+    esp_zb_stack_main_loop();
 }
 
 void ZigBeeCore::setRadioConfig(esp_zb_radio_config_t config) { _radio_config = config; }
@@ -169,23 +174,18 @@ void ZigBeeCore::setScanDuration(uint8_t duration) {
 void ZigBeeCore::setRebootOpenNetwork(uint8_t time) { _open_network = time; }
 
 void ZigBeeCore::openNetwork(uint8_t time) {
-    if (started()) {
-        ESP_LOGV(TAG, "Opening network for joining for %d seconds", time);
-        esp_zb_bdb_open_network(time);
-    }
+    ESP_ERROR_ASSERT(started());
+
+    ESP_LOGV(TAG, "Opening network for joining for %d seconds", time);
+    esp_zb_bdb_open_network(time);
 }
 
-static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask) {
-    ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(mode_mask));
-}
-
-void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
-    // common variables
-    uint32_t *p_sg_p = signal_struct->p_app_signal;
-    esp_err_t err_status = signal_struct->esp_err_status;
-    esp_zb_app_signal_type_t sig_type = (esp_zb_app_signal_type_t)*p_sg_p;
-    // coordinator variables
-    esp_zb_zdo_signal_device_annce_params_t *dev_annce_params = NULL;
+// This is declared by the ZigBee stack as an undefined external
+// reference. It's called by the ZigBee stack.
+extern "C" void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
+    const auto p_sg_p = signal_struct->p_app_signal;
+    const auto err_status = signal_struct->esp_err_status;
+    const auto sig_type = (esp_zb_app_signal_type_t)*p_sg_p;
 
     // main switch
     switch (sig_type) {
@@ -193,6 +193,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
             ESP_LOGI(TAG, "ZigBee stack initialized");
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
             break;
+
         case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:  // Common
         case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:       // Common
             if (err_status == ESP_OK) {
@@ -222,15 +223,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                     } else {
                         ZigBee._connected = true;
                     }
-                    ZigBee.searchBindings();
                 }
             } else {
                 /* commissioning failed */
                 ESP_LOGW(TAG, "Commissioning failed, error %s, trying again...", esp_err_to_name(err_status));
-                esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb,
-                                       ESP_ZB_BDB_MODE_INITIALIZATION, 500);
+                esp_zb_scheduler_alarm(
+                    [](uint8_t param) { ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(param)); },
+                    ESP_ZB_BDB_MODE_INITIALIZATION, 500);
             }
             break;
+
         case ESP_ZB_BDB_SIGNAL_FORMATION:  // Coordinator
             if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR) {
                 if (err_status == ESP_OK) {
@@ -246,11 +248,13 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                     esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
                 } else {
                     ESP_LOGI(TAG, "Restart network formation (status: %s)", esp_err_to_name(err_status));
-                    esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb,
-                                           ESP_ZB_BDB_MODE_NETWORK_FORMATION, 1000);
+                    esp_zb_scheduler_alarm(
+                        [](uint8_t param) { ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(param)); },
+                        ESP_ZB_BDB_MODE_NETWORK_FORMATION, 1000);
                 }
             }
             break;
+
         case ESP_ZB_BDB_SIGNAL_STEERING:  // Router and End Device
             if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR) {
                 if (err_status == ESP_OK) {
@@ -274,56 +278,18 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                     ZigBee._has_connected.call();
                 } else {
                     ESP_LOGI(TAG, "Network steering was not successful (status: %s)", esp_err_to_name(err_status));
-                    esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb,
-                                           ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
+                    esp_zb_scheduler_alarm(
+                        [](uint8_t param) { ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(param)); },
+                        ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
                 }
             }
             break;
-        case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE:  // Coordinator
-            if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR) {
-                dev_annce_params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-                ESP_LOGI(TAG, "New device commissioned or rejoined (short: 0x%04hx)",
-                         dev_annce_params->device_short_addr);
-                esp_zb_zdo_match_desc_req_param_t cmd_req;
-                cmd_req.dst_nwk_addr = dev_annce_params->device_short_addr;
-                cmd_req.addr_of_interest = dev_annce_params->device_short_addr;
-                ESP_LOGV(TAG, "Device capabilities: 0x%02x", dev_annce_params->capability);
-                /*
-                    capability:
-                    Bit 0 – Alternate PAN Coordinator
-                    Bit 1 – Device type: 1- ZigBee Router; 0 – End Device
-                    Bit 2 – Power Source: 1 Main powered
-                    Bit 3 – Receiver on when Idle
-                    Bit 4 – Reserved
-                    Bit 5 – Reserved
-                    Bit 6 – Security capability
-                    Bit 7 – Reserved
-                */
-                // for each endpoint in the list call the findEndpoint function if not bounded or allowed to bind
-                // multiple devices
-                for (std::list<ZigBeeEndpoint *>::iterator it = ZigBee.ep_objects.begin();
-                     it != ZigBee.ep_objects.end(); ++it) {
-                    if (!(*it)->bound() || (*it)->epAllowMultipleBinding()) {
-                        // Check if the device is already bound
-                        bool found = false;
-                        // Get the list of devices bound to the EP
-                        std::list<zb_device_params_t *> bound_devices = (*it)->getBoundDevices();
-                        for (std::list<zb_device_params_t *>::iterator device = bound_devices.begin();
-                             device != bound_devices.end(); ++device) {
-                            if (((*device)->short_addr == dev_annce_params->device_short_addr) ||
-                                (memcmp((*device)->ieee_addr, dev_annce_params->ieee_addr, 8) == 0)) {
-                                found = true;
-                                ESP_LOGD(TAG, "Device already bound to endpoint %d", (*it)->getEndpoint());
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            (*it)->findEndpoint(&cmd_req);
-                        }
-                    }
-                }
-            }
+
+        case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {  // Coordinator
+            ESP_LOGW(TAG, "ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE has not been implemented");
             break;
+        }
+
         case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:  // Coordinator
             if ((zigbee_role_t)ZigBee.getRole() == ZIGBEE_COORDINATOR) {
                 if (err_status == ESP_OK) {
@@ -336,12 +302,14 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                 }
             }
             break;
+
         case ESP_ZB_ZDO_SIGNAL_LEAVE:  // End Device + Router
             // Device was removed from the network, factory reset the device
-            if ((zigbee_role_t)ZigBee.getRole() != ZIGBEE_COORDINATOR) {
+            if (ZigBee.getRole() != ZIGBEE_COORDINATOR) {
                 ZigBee.factoryReset();
             }
             break;
+
         default:
             ESP_LOGV(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type,
                      esp_err_to_name(err_status));
@@ -407,159 +375,145 @@ void ZigBeeCore::scanDelete() {
     _scan_status = ZB_SCAN_FAILED;
 }
 
-// Recall bounded devices from the binding table after reboot
-void ZigBeeCore::bindingTableCb(const esp_zb_zdo_binding_table_info_t *table_info, void *user_ctx) {
-    bool done = true;
-    esp_zb_zdo_mgmt_bind_param_t *req = (esp_zb_zdo_mgmt_bind_param_t *)user_ctx;
-    esp_zb_zdp_status_t zdo_status = (esp_zb_zdp_status_t)table_info->status;
-    ESP_LOGD(TAG, "Binding table callback for address 0x%04x with status %d", req->dst_addr, zdo_status);
-    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
-        // Print binding table log simple
-        ESP_LOGD(TAG, "Binding table info: total %d, index %d, count %d", table_info->total, table_info->index,
-                 table_info->count);
+esp_err_t ZigBeeCore::zbActionHandler(esp_zb_core_action_callback_id_t callback_id, const void *message) {
+    ESP_LOGI(TAG, "Received action %d", (int)callback_id);
 
-        if (table_info->total == 0) {
-            ESP_LOGD(TAG, "No binding table entries found");
-            free(req);
-            return;
-        }
-
-        esp_zb_zdo_binding_table_record_t *record = table_info->record;
-        for (int i = 0; i < table_info->count; i++) {
-            ESP_LOGD(TAG, "Binding table record: src_endp %d, dst_endp %d, cluster_id 0x%04x, dst_addr_mode %d",
-                     record->src_endp, record->dst_endp, record->cluster_id, record->dst_addr_mode);
-
-            zb_device_params_t *device = (zb_device_params_t *)calloc(1, sizeof(zb_device_params_t));
-            device->endpoint = record->dst_endp;
-            if (record->dst_addr_mode == ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT ||
-                record->dst_addr_mode == ESP_ZB_APS_ADDR_MODE_16_GROUP_ENDP_NOT_PRESENT) {
-                device->short_addr = record->dst_address.addr_short;
-            } else {  // ESP_ZB_APS_ADDR_MODE_64_ENDP_PRESENT
-                memcpy(device->ieee_addr, record->dst_address.addr_long, sizeof(esp_zb_ieee_addr_t));
-            }
-
-            // Add to list of bound devices of proper endpoint
-            for (std::list<ZigBeeEndpoint *>::iterator it = ZigBee.ep_objects.begin(); it != ZigBee.ep_objects.end();
-                 ++it) {
-                if ((*it)->getEndpoint() == record->src_endp) {
-                    (*it)->addBoundDevice(device);
-                    ESP_LOGD(TAG,
-                             "Device bound to EP %d -> device endpoint: %d, short addr: 0x%04x, ieee addr: "
-                             "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-                             record->src_endp, device->endpoint, device->short_addr, device->ieee_addr[7],
-                             device->ieee_addr[6], device->ieee_addr[5], device->ieee_addr[4], device->ieee_addr[3],
-                             device->ieee_addr[2], device->ieee_addr[1], device->ieee_addr[0]);
-                }
-            }
-            record = record->next;
-        }
-
-        // Continue reading the binding table
-        if (table_info->index + table_info->count < table_info->total) {
-            /* There are unreported binding table entries, request for them. */
-            req->start_index = table_info->index + table_info->count;
-            esp_zb_zdo_binding_table_req(req, bindingTableCb, req);
-            done = false;
-        }
-    }
-
-    if (done) {
-        // Print bound devices
-        ESP_LOGD(TAG, "Filling bounded devices finished");
-        free(req);
-    }
-}
-
-void ZigBeeCore::searchBindings() {
-    esp_zb_zdo_mgmt_bind_param_t *mb_req = (esp_zb_zdo_mgmt_bind_param_t *)malloc(sizeof(esp_zb_zdo_mgmt_bind_param_t));
-    mb_req->dst_addr = esp_zb_get_short_address();
-    mb_req->start_index = 0;
-    ESP_LOGD(TAG, "Requesting binding table for address 0x%04x", mb_req->dst_addr);
-    esp_zb_zdo_binding_table_req(mb_req, bindingTableCb, (void *)mb_req);
-}
-
-// Function to convert enum value to string
-const char *ZigBeeCore::getDeviceTypeString(esp_zb_ha_standard_devices_t deviceId) {
-    switch (deviceId) {
-        case ESP_ZB_HA_ON_OFF_SWITCH_DEVICE_ID:
-            return "General On/Off switch";
-        case ESP_ZB_HA_LEVEL_CONTROL_SWITCH_DEVICE_ID:
-            return "Level Control Switch";
-        case ESP_ZB_HA_ON_OFF_OUTPUT_DEVICE_ID:
-            return "General On/Off output";
-        case ESP_ZB_HA_LEVEL_CONTROLLABLE_OUTPUT_DEVICE_ID:
-            return "Level Controllable Output";
-        case ESP_ZB_HA_SCENE_SELECTOR_DEVICE_ID:
-            return "Scene Selector";
-        case ESP_ZB_HA_CONFIGURATION_TOOL_DEVICE_ID:
-            return "Configuration Tool";
-        case ESP_ZB_HA_REMOTE_CONTROL_DEVICE_ID:
-            return "Remote Control";
-        case ESP_ZB_HA_COMBINED_INTERFACE_DEVICE_ID:
-            return "Combined Interface";
-        case ESP_ZB_HA_RANGE_EXTENDER_DEVICE_ID:
-            return "Range Extender";
-        case ESP_ZB_HA_MAINS_POWER_OUTLET_DEVICE_ID:
-            return "Mains Power Outlet";
-        case ESP_ZB_HA_DOOR_LOCK_DEVICE_ID:
-            return "Door lock client";
-        case ESP_ZB_HA_DOOR_LOCK_CONTROLLER_DEVICE_ID:
-            return "Door lock controller";
-        case ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID:
-            return "Simple Sensor device";
-        case ESP_ZB_HA_CONSUMPTION_AWARENESS_DEVICE_ID:
-            return "Consumption Awareness Device";
-        case ESP_ZB_HA_HOME_GATEWAY_DEVICE_ID:
-            return "Home Gateway";
-        case ESP_ZB_HA_SMART_PLUG_DEVICE_ID:
-            return "Smart plug";
-        case ESP_ZB_HA_WHITE_GOODS_DEVICE_ID:
-            return "White Goods";
-        case ESP_ZB_HA_METER_INTERFACE_DEVICE_ID:
-            return "Meter Interface";
-        case ESP_ZB_HA_ON_OFF_LIGHT_DEVICE_ID:
-            return "On/Off Light Device";
-        case ESP_ZB_HA_DIMMABLE_LIGHT_DEVICE_ID:
-            return "Dimmable Light Device";
-        case ESP_ZB_HA_COLOR_DIMMABLE_LIGHT_DEVICE_ID:
-            return "Color Dimmable Light Device";
-        case ESP_ZB_HA_DIMMER_SWITCH_DEVICE_ID:
-            return "Dimmer Switch Device";
-        case ESP_ZB_HA_COLOR_DIMMER_SWITCH_DEVICE_ID:
-            return "Color Dimmer Switch Device";
-        case ESP_ZB_HA_LIGHT_SENSOR_DEVICE_ID:
-            return "Light Sensor";
-        case ESP_ZB_HA_SHADE_DEVICE_ID:
-            return "Shade";
-        case ESP_ZB_HA_SHADE_CONTROLLER_DEVICE_ID:
-            return "Shade controller";
-        case ESP_ZB_HA_WINDOW_COVERING_DEVICE_ID:
-            return "Window Covering client";
-        case ESP_ZB_HA_WINDOW_COVERING_CONTROLLER_DEVICE_ID:
-            return "Window Covering controller";
-        case ESP_ZB_HA_HEATING_COOLING_UNIT_DEVICE_ID:
-            return "Heating/Cooling Unit device";
-        case ESP_ZB_HA_THERMOSTAT_DEVICE_ID:
-            return "Thermostat Device";
-        case ESP_ZB_HA_TEMPERATURE_SENSOR_DEVICE_ID:
-            return "Temperature Sensor";
-        case ESP_ZB_HA_IAS_CONTROL_INDICATING_EQUIPMENT_ID:
-            return "IAS Control and Indicating Equipment";
-        case ESP_ZB_HA_IAS_ANCILLARY_CONTROL_EQUIPMENT_ID:
-            return "IAS Ancillary Control Equipment";
-        case ESP_ZB_HA_IAS_ZONE_ID:
-            return "IAS Zone";
-        case ESP_ZB_HA_IAS_WARNING_DEVICE_ID:
-            return "IAS Warning Device";
-        case ESP_ZB_HA_TEST_DEVICE_ID:
-            return "Custom HA device for test";
-        case ESP_ZB_HA_CUSTOM_TUNNEL_DEVICE_ID:
-            return "Custom Tunnel device";
-        case ESP_ZB_HA_CUSTOM_ATTR_DEVICE_ID:
-            return "Custom Attributes Device";
+    switch (callback_id) {
+        case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+            return zbAttributeSetHandler((esp_zb_zcl_set_attr_value_message_t *)message);
+        case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
+            return zbAttributeReportingHandler((esp_zb_zcl_report_attr_message_t *)message);
+        case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:
+            return zbCmdReadAttributeResponseHandler((esp_zb_zcl_cmd_read_attr_resp_message_t *)message);
+        case ESP_ZB_CORE_CMD_REPORT_CONFIG_RESP_CB_ID:
+            return zbConfigureReportingResponseHandler((esp_zb_zcl_cmd_config_report_resp_message_t *)message);
+        case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
+            return zbCmdDefaultResponseHandler((esp_zb_zcl_cmd_default_resp_message_t *)message);
         default:
-            return "Unknown device type";
+            ESP_LOGW(TAG, "Receive unhandled ZigBee action(0x%x) callback", callback_id);
+            return ESP_OK;
     }
 }
 
-ZigBeeCore ZigBee = ZigBeeCore();
+esp_err_t ZigBeeCore::zbAttributeSetHandler(const esp_zb_zcl_set_attr_value_message_t *message) {
+    if (!message) {
+        ESP_LOGE(TAG, "Empty message");
+    }
+    if (message->info.status != ESP_ZB_ZCL_STATUS_SUCCESS) {
+        ESP_LOGE(TAG, "Received message: error status(%d)", message->info.status);
+    }
+
+    ESP_LOGV(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)",
+             message->info.dst_endpoint, message->info.cluster, message->attribute.id, message->attribute.data.size);
+
+    // List through all ZigBee EPs and call the callback function, with the message
+    const auto endpoint = getEndpointById(message->info.dst_endpoint);
+    if (endpoint) {
+        return endpoint->zbAttributeSet(message);
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t ZigBeeCore::zbAttributeReportingHandler(const esp_zb_zcl_report_attr_message_t *message) {
+    if (!message) {
+        ESP_LOGE(TAG, "Empty message");
+    }
+    if (message->status != ESP_ZB_ZCL_STATUS_SUCCESS) {
+        ESP_LOGE(TAG, "Received message: error status(%d)", message->status);
+    }
+    ESP_LOGV(TAG, "Received report from address(0x%x) src endpoint(%d) to dst endpoint(%d) cluster(0x%x)",
+             message->src_address.u.short_addr, message->src_endpoint, message->dst_endpoint, message->cluster);
+
+    const auto endpoint = getEndpointById(message->dst_endpoint);
+    if (endpoint) {
+        return endpoint->zbAttributeRead(message->cluster, &message->attribute);
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t ZigBeeCore::zbCmdReadAttributeResponseHandler(const esp_zb_zcl_cmd_read_attr_resp_message_t *message) {
+    if (!message) {
+        ESP_LOGE(TAG, "Empty message");
+    }
+    if (message->info.status != ESP_ZB_ZCL_STATUS_SUCCESS) {
+        ESP_LOGE(TAG, "Received message: error status(%d)", message->info.status);
+    }
+    ESP_LOGV(TAG, "Read attribute response: from address(0x%x) src endpoint(%d) to dst endpoint(%d) cluster(0x%x)",
+             message->info.src_address.u.short_addr, message->info.src_endpoint, message->info.dst_endpoint,
+             message->info.cluster);
+
+    const auto endpoint = getEndpointById(message->info.dst_endpoint);
+    if (endpoint) {
+        esp_zb_zcl_read_attr_resp_variable_t *variable = message->variables;
+
+        while (variable) {
+            ESP_LOGV(TAG, "Read attribute response: status(%d), cluster(0x%x), attribute(0x%x), type(0x%x), value(%d)",
+                     variable->status, message->info.cluster, variable->attribute.id, variable->attribute.data.type,
+                     variable->attribute.data.value ? *(uint8_t *)variable->attribute.data.value : 0);
+
+            if (variable->status == ESP_ZB_ZCL_STATUS_SUCCESS) {
+                return endpoint->zbAttributeRead(message->info.cluster, &variable->attribute);
+            }
+            variable = variable->next;
+        }
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t ZigBeeCore::zbConfigureReportingResponseHandler(const esp_zb_zcl_cmd_config_report_resp_message_t *message) {
+    if (!message) {
+        ESP_LOGE(TAG, "Empty message");
+    }
+    if (message->info.status != ESP_ZB_ZCL_STATUS_SUCCESS) {
+        ESP_LOGE(TAG, "Received message: error status(%d)", message->info.status);
+    }
+    esp_zb_zcl_config_report_resp_variable_t *variable = message->variables;
+    while (variable) {
+        ESP_LOGV(TAG, "Configure report response: status(%d), cluster(0x%x), direction(0x%x), attribute(0x%x)",
+                 variable->status, message->info.cluster, variable->direction, variable->attribute_id);
+        variable = variable->next;
+    }
+    return ESP_OK;
+}
+
+esp_err_t ZigBeeCore::zbCmdDefaultResponseHandler(const esp_zb_zcl_cmd_default_resp_message_t *message) {
+    if (!message) {
+        ESP_LOGE(TAG, "Empty message");
+    }
+    if (message->info.status != ESP_ZB_ZCL_STATUS_SUCCESS) {
+        ESP_LOGE(TAG, "Received message: error status(%d)", message->info.status);
+    }
+    ESP_LOGV(TAG,
+             "Received default response: from address(0x%x), src_endpoint(%d) to dst_endpoint(%d), cluster(0x%x) with "
+             "status 0x%x",
+             message->info.src_address.u.short_addr, message->info.src_endpoint, message->info.dst_endpoint,
+             message->info.cluster, message->status_code);
+    return ESP_OK;
+}
+
+bool ZigBeeCore::zbCommandHandler(uint8_t bufid) {
+    uint8_t response_buf[MAX_FRAME_DATA_SIZE];
+
+    zb_zcl_parsed_hdr_t *cmd_info = ZB_BUF_GET_PARAM(bufid, zb_zcl_parsed_hdr_t);
+
+    ZigBeeStream request((uint8_t *)zb_buf_begin(bufid), zb_buf_len(bufid));
+    ZigBeeStream response(response_buf, MAX_FRAME_DATA_SIZE);
+
+    ESP_LOGV(TAG, "Received command: cluster(0x%x), command(0x%x)", cmd_info->cluster_id, cmd_info->cmd_id);
+
+    // List through all ZigBee EPs and call the callback function, with the message
+    const auto endpoint = getEndpointById(cmd_info->addr_data.common_data.dst_endpoint);
+    if (endpoint) {
+        auto err = endpoint->zbCommand(cmd_info, request, response);
+        if (err == ESP_ERR_NOT_SUPPORTED) {
+            return false;
+        }
+        ESP_ERROR_CHECK_WITHOUT_ABORT(err);
+        return true;
+    }
+
+    return false;
+}

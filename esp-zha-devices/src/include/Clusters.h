@@ -2,6 +2,7 @@
 
 #include "Attribute.h"
 #include "Cluster.h"
+#include "PowerSource.h"
 
 enum class GenBasicAttribute : uint16_t {
     ZclVersion = 0,

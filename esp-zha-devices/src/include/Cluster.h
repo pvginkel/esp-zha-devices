@@ -45,7 +45,7 @@ public:
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-    virtual void zbAttributeSet(const esp_zb_zcl_set_attr_value_message_t* message) {};
+    esp_err_t zbAttributeSet(const esp_zb_zcl_set_attr_value_message_t* message);
 
     Cluster& operator=(const Cluster&) = delete;
 

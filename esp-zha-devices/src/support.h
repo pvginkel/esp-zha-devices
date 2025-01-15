@@ -27,7 +27,7 @@ extern "C" {
 };
 #endif
 
-#define LOG_TAG(v) [[maybe_unused]] static const char *TAG = #v
+#define LOG_TAG(v) [[maybe_unused]] static const char* TAG = #v
 
 #ifdef NDEBUG
 #define ESP_ERROR_ASSERT(x) \
@@ -52,3 +52,15 @@ extern "C" {
         }                                                                                                      \
     } while (0)
 #endif
+
+class ZbLockGuard {
+public:
+    ZbLockGuard() { esp_zb_lock_acquire(portMAX_DELAY); }
+
+    ~ZbLockGuard() { esp_zb_lock_release(); }
+
+    ZbLockGuard(const ZbLockGuard&) = delete;
+    ZbLockGuard& operator=(const ZbLockGuard&) = delete;
+    ZbLockGuard(ZbLockGuard&&) = delete;
+    ZbLockGuard& operator=(ZbLockGuard&&) = delete;
+};

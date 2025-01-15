@@ -30,10 +30,11 @@ public:
     uint8_t getEndpointId() { return _ep_config.endpoint; }
 
     void addCluster(Cluster *cluster);
+    Cluster *getClusterById(uint16_t clusterId);
 
-    virtual void zbAttributeSet(const esp_zb_zcl_set_attr_value_message_t *message) {};
-    virtual void zbAttributeRead(uint16_t cluster_id, const esp_zb_zcl_attribute_t *attribute) {};
-    virtual void zbReadBasicCluster(const esp_zb_zcl_attribute_t *attribute);
+    esp_err_t zbAttributeSet(const esp_zb_zcl_set_attr_value_message_t *message);
+    esp_err_t zbAttributeRead(uint16_t cluster_id, const esp_zb_zcl_attribute_t *attribute);
+
     virtual esp_err_t zbCommand(const zb_zcl_parsed_hdr_t *cmd_info, ZigBeeStream &request, ZigBeeStream &response) {
         return ESP_ERR_NOT_SUPPORTED;
     }

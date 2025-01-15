@@ -75,7 +75,7 @@ class ZigBeeCore {
     uint8_t _scan_duration;
     bool _rx_on_when_idle;
 
-    std::vector<ZigBeeEndpoint *> ep_objects;
+    std::vector<ZigBeeEndpoint *> _endpoints;
     esp_zb_ep_list_t *_zb_ep_list;
     zigbee_role_t _role;
     bool _started;
@@ -88,9 +88,14 @@ class ZigBeeCore {
     esp_err_t zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs);
     static void scanCompleteCallback(esp_zb_zdp_status_t zdo_status, uint8_t count,
                                      esp_zb_network_descriptor_t *nwk_descriptor);
-    const char *getDeviceTypeString(esp_zb_ha_standard_devices_t deviceId);
-    void searchBindings();
-    static void bindingTableCb(const esp_zb_zdo_binding_table_info_t *table_info, void *user_ctx);
+    static void zbTask(void *pvParameters);
+    esp_err_t zbActionHandler(esp_zb_core_action_callback_id_t callback_id, const void *message);
+    bool zbCommandHandler(uint8_t bufid);
+    esp_err_t zbAttributeSetHandler(const esp_zb_zcl_set_attr_value_message_t *message);
+    esp_err_t zbAttributeReportingHandler(const esp_zb_zcl_report_attr_message_t *message);
+    esp_err_t zbCmdReadAttributeResponseHandler(const esp_zb_zcl_cmd_read_attr_resp_message_t *message);
+    esp_err_t zbConfigureReportingResponseHandler(const esp_zb_zcl_cmd_config_report_resp_message_t *message);
+    esp_err_t zbCmdDefaultResponseHandler(const esp_zb_zcl_cmd_default_resp_message_t *message);
 
 public:
     ZigBeeCore();
@@ -105,7 +110,7 @@ public:
     zigbee_role_t getRole() { return _role; }
 
     void addEndpoint(ZigBeeEndpoint *ep);
-    // void removeEndpoint(ZigBeeEndpoint *ep);
+    ZigBeeEndpoint *getEndpointById(uint8_t endpointId);
 
     void setRadioConfig(esp_zb_radio_config_t config);
     esp_zb_radio_config_t getRadioConfig();
