@@ -1,1 +1,1 @@
-# ZigBee Home Automation Devices for the ESP32
+# ESP32 support libraries
