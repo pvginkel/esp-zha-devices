@@ -16,6 +16,9 @@ typedef enum {
     ESP_ZB_ZCL_BASIC_POWER_SOURCE_EMERGENCY_MAINS_AND_TRANSFER_SWITCH = 0x6
 } esp_zb_zcl_basic_power_source_t;
 
+esp_err_t esp_zb_endpoint_set_identity(esp_zb_cluster_list_t *ep, const char *manufacturer_name,
+                                       const char *model_identity);
+
 esp_err_t esp_zb_basic_cluster_add_string_attr(esp_zb_attribute_list_t *attr_list, uint16_t attr_id,
                                                const char *value_p);
 
