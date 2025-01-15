@@ -18,15 +18,17 @@ class StatusControl {
     Callback<void> _reset;
     Callback<int> _resetCountdown;
     Callback<float> _ledBrightnessChanged;
-    uint32_t _lastStatusChange = 0;
+    Callback<void> _ledBrightnessReset;
+    uint32_t _lastStatusChange{};
     connection_status_t _connected = CONNECTION_STATUS_NOT_CONNECTED;
     uint32_t _initialDelay;
     int _steps;
     uint32_t _stepTime;
-    bool _resetRaised = false;
+    bool _resetRaised{};
     uint32_t _fadePeriod;
     int _remainingReported = -1;
     float _lastLevel;
+    bool _levelSet{};
 
 public:
     StatusControl(uint32_t initialDelay = 1000, int steps = 4, uint32_t stepTime = 1000, uint32_t fadePeriod = 1000)
@@ -40,6 +42,7 @@ public:
     void onReset(std::function<void(void)> func) { _reset.add(func); }
     void onResetCountdown(std::function<void(int)> func) { _resetCountdown.add(func); }
     void onLedBrightnessChanged(std::function<void(float)> func) { _ledBrightnessChanged.add(func); }
+    void onLedBrightnessReset(std::function<void(void)> func) { _ledBrightnessReset.add(func); }
 
 private:
     void setLevel(float level);

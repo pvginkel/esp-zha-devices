@@ -101,14 +101,16 @@ void StatusControl::update() {
             level = 1.0f - level;
         }
         setLevel(level);
-    } else {
-        setLevel(0);
+    } else if (_levelSet) {
+        _levelSet = false;
+        _ledBrightnessReset.call();
     }
 }
 
 void StatusControl::setLevel(float level) {
-    if (level != _lastLevel) {
+    if (level != _lastLevel || !_levelSet) {
         _lastLevel = level;
+        _levelSet = true;
         _ledBrightnessChanged.call(level);
     }
 }
