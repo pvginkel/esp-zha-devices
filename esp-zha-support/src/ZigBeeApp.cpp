@@ -35,6 +35,8 @@ void ZigBeeApp::begin() {
     xTaskCreate([](void* param) { ((ZigBeeApp*)param)->task(); }, "ZigBeeApp::task", 4096, this, 5, nullptr);
 }
 
+void ZigBeeApp::add_endpoint(ZigBeeEndpoint* endpoint) { _endpoints.push_back(endpoint); }
+
 void ZigBeeApp::task() {
 #if CONFIG_ESP_ZB_TRACE_ENABLE
     esp_zb_set_trace_level_mask(ESP_ZB_TRACE_LEVEL_CRITICAL, ESP_ZB_TRACE_SUBSYSTEM_MAC | ESP_ZB_TRACE_SUBSYSTEM_APP);
@@ -56,8 +58,13 @@ void ZigBeeApp::task() {
     };
     esp_zb_init(&zigbee_config);
 
-    auto endpoint = build_endpoint();
-    ESP_ERROR_CHECK(esp_zb_device_register(endpoint));
+    for (const auto endpoint : _endpoints) {
+        auto ep_list = endpoint->build_endpoint();
+
+        ESP_ERROR_CHECK(esp_zb_device_register(ep_list));
+
+        ESP_ERROR_CHECK(endpoint->initialize_endpoint(ep_list));
+    }
 
     esp_zb_core_action_handler_register([](esp_zb_core_action_callback_id_t callback_id, const void* message) {
         return APP_INSTANCE->action_handler(callback_id, message);
@@ -67,6 +74,16 @@ void ZigBeeApp::task() {
     ESP_ERROR_CHECK(esp_zb_start(false));
 
     esp_zb_stack_main_loop();
+}
+
+esp_err_t ZigBeeApp::deferred_driver_init() {
+    for (const auto endpoint : _endpoints) {
+        const auto err = endpoint->deferred_driver_init();
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+    return ESP_OK;
 }
 
 esp_err_t ZigBeeApp::action_handler(esp_zb_core_action_callback_id_t callback_id, const void* message) {
@@ -93,6 +110,12 @@ esp_err_t ZigBeeApp::attribute_handler(const esp_zb_zcl_set_attr_value_message_t
     ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)",
              message->info.dst_endpoint, message->info.cluster, message->attribute.id, message->attribute.data.size);
 
+    for (const auto endpoint : _endpoints) {
+        if (endpoint->get_endpoint_id() == message->info.dst_endpoint) {
+            endpoint->attribute_handler(message);
+        }
+    }
+
     return ESP_OK;
 }
 
@@ -118,16 +141,14 @@ extern "C" void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_struct) {
                 } else {
                     ESP_LOGI(TAG, "Device rebooted");
                 }
+
+                APP_INSTANCE->_has_connected.call();
             } else {
                 /* commissioning failed */
-                ESP_LOGW(TAG, "Failed to initialize Zigbee stack (status: %s); retrying", esp_err_to_name(err_status));
+                ESP_LOGW(TAG, "Initialization failed (status: %s); retrying", esp_err_to_name(err_status));
 
                 esp_zb_scheduler_alarm(
-                    [](uint8_t mode_mask) {
-                        ESP_LOGI(TAG, "Initialize Zigbee stack");
-
-                        ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(mode_mask));
-                    },
+                    [](uint8_t mode_mask) { ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(mode_mask)); },
                     ESP_ZB_BDB_MODE_INITIALIZATION, 1000);
             }
             break;

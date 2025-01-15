@@ -19,6 +19,33 @@ typedef enum {
 esp_err_t esp_zb_basic_cluster_add_string_attr(esp_zb_attribute_list_t *attr_list, uint16_t attr_id,
                                                const char *value_p);
 
+#ifdef NDEBUG
+#define ESP_ZB_ERROR_CHECK(x)              \
+    do {                                   \
+        esp_zb_zcl_status_t err_rc_ = (x); \
+        (void)sizeof(err_rc_);             \
+    } while (0)
+#elif defined(CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT)
+#define ESP_ZB_ERROR_CHECK(x)                                 \
+    do {                                                      \
+        esp_zb_zcl_status_t err_rc_ = (x);                    \
+        if (unlikely(err_rc_ != ESP_ZB_ZCL_STATUS_SUCCESS)) { \
+            abort();                                          \
+        }                                                     \
+    } while (0)
+#else
+#define ESP_ZB_ERROR_CHECK(x)                                                                                  \
+    do {                                                                                                       \
+        esp_zb_zcl_status_t err_rc_ = (x);                                                                     \
+        if (unlikely(err_rc_ != ESP_ZB_ZCL_STATUS_SUCCESS)) {                                                  \
+            printf("ESP_ZB_ERROR_ASSERT failed");                                                              \
+            printf(" at %p\n", __builtin_return_address(0));                                                   \
+            printf("file: \"%s\" line %d\nfunc: %s\nexpression: %s\n", __FILE__, __LINE__, __ASSERT_FUNC, #x); \
+            abort();                                                                                           \
+        }                                                                                                      \
+    } while (0)
+#endif
+
 #ifdef __cplusplus
 };
 #endif
