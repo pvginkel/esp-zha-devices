@@ -13,7 +13,6 @@ class Attribute {
     Cluster* _cluster{};
     esp_zb_zcl_attr_type_t _dataType;
     uint16_t _attributeId;
-    uint8_t _reportingEndpointId{};
     Callback<void> _valueChanged;
 
 public:
@@ -25,10 +24,6 @@ public:
 
     uint16_t getAttributeId() { return _attributeId; }
     esp_zb_zcl_attr_type_t getDataType() { return _dataType; }
-
-    uint8_t getReportingEndpointId() { return _reportingEndpointId; }
-    void setReportingEndpointId(uint8_t reportingEndpointId) { _reportingEndpointId = reportingEndpointId; }
-    void configureBroadcastReporting() { setReportingEndpointId(REPORT_BROADCAST); }
 
     void onValueChanged(std::function<void(void)> func) { _valueChanged.add(func); }
 

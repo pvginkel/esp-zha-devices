@@ -21,6 +21,7 @@ enum class ClusterType : uint8_t { Input, Output };
 class Device;
 
 class Cluster {
+    friend ZigBeeEndpoint;
     friend Attribute;
 
     std::vector<Attribute*> _attributes;

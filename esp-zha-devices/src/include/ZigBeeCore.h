@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <list>
+#include <vector>
 
 #include "Callback.h"
 #include "ZigBeeEndpoint.h"
@@ -65,7 +65,9 @@ typedef enum {
     }
 
 class ZigBeeCore {
-private:
+    // Friend function declaration to allow access to private members
+    friend void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);
+
     esp_zb_radio_config_t _radio_config;
     esp_zb_host_config_t _host_config;
     uint32_t _primary_channel_mask;
@@ -73,6 +75,7 @@ private:
     uint8_t _scan_duration;
     bool _rx_on_when_idle;
 
+    std::vector<ZigBeeEndpoint *> ep_objects;
     esp_zb_ep_list_t *_zb_ep_list;
     zigbee_role_t _role;
     bool _started;
@@ -92,8 +95,6 @@ private:
 public:
     ZigBeeCore();
     ~ZigBeeCore();
-
-    std::list<ZigBeeEndpoint *> ep_objects;
 
     esp_err_t begin(zigbee_role_t role = ZIGBEE_END_DEVICE, bool erase_nvs = false);
     esp_err_t begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
@@ -134,9 +135,6 @@ public:
     void factoryReset();
 
     void onHasConnected(std::function<void(void)> func) { _has_connected.add(func); }
-
-    // Friend function declaration to allow access to private members
-    friend void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);
 };
 
 extern ZigBeeCore ZigBee;

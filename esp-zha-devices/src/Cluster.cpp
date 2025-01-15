@@ -5,7 +5,9 @@
 #include "Attribute.h"
 #include "ZigBeeEndpoint.h"
 
-Cluster::Cluster(uint16_t clusterId, ClusterType type) : _clusterId(clusterId), _type(type) {}
+Cluster::Cluster(uint16_t clusterId, ClusterType type) : _clusterId(clusterId), _type(type) {
+    _cluster = esp_zb_zcl_attr_list_create(clusterId);
+}
 
 Cluster::~Cluster() {
     for (auto attribute : _attributes) {
@@ -35,7 +37,7 @@ esp_err_t Cluster::sendMessage(uint8_t endpointId, uint16_t commandId, const uin
     } else {
         req.zcl_basic_cmd.dst_endpoint = endpointId;
     }
-    req.zcl_basic_cmd.src_endpoint = _endpoint->getEndpoint();
+    req.zcl_basic_cmd.src_endpoint = _endpoint->getEndpointId();
     req.address_mode = ESP_ZB_APS_ADDR_MODE_64_ENDP_PRESENT;
     req.cluster_id = getClusterId();
     req.profile_id = ESP_ZB_AF_HA_PROFILE_ID;
