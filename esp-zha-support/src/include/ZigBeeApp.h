@@ -15,10 +15,12 @@ public:
     void begin();
     void add_endpoint(ZigBeeEndpoint* endpoint);
     void on_has_connected(std::function<void(void)> func) { _has_connected.add(func); }
+    ZigBeeEndpoint* get_endpoint_by_id(uint8_t endpoint_id);
 
 private:
     esp_err_t deferred_driver_init();
     esp_err_t action_handler(esp_zb_core_action_callback_id_t callback_id, const void* message);
+    bool command_handler(uint8_t bufid);
     esp_err_t attribute_handler(const esp_zb_zcl_set_attr_value_message_t* message);
 
     void task();

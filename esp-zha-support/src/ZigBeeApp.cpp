@@ -2,6 +2,8 @@
 
 #include "ZigBeeApp.h"
 
+#include "ZigBeeStream.h"
+
 LOG_TAG(ZigBeeApp);
 
 #define INSTALL_CODE_POLICY false                       /* enable the install code policy for security */
@@ -38,8 +40,9 @@ void ZigBeeApp::begin() {
 void ZigBeeApp::add_endpoint(ZigBeeEndpoint* endpoint) { _endpoints.push_back(endpoint); }
 
 void ZigBeeApp::task() {
-#if CONFIG_ESP_ZB_TRACE_ENABLE
-    esp_zb_set_trace_level_mask(ESP_ZB_TRACE_LEVEL_CRITICAL, ESP_ZB_TRACE_SUBSYSTEM_MAC | ESP_ZB_TRACE_SUBSYSTEM_APP);
+#if CONFIG_ZB_DEBUG_MODE
+    esp_zb_set_trace_level_mask(ESP_ZB_TRACE_LEVEL_CRITICAL,
+                                ESP_ZB_TRACE_SUBSYSTEM_ZDO | ESP_ZB_TRACE_SUBSYSTEM_ZCL | ESP_ZB_TRACE_SUBSYSTEM_APP);
 #endif
 
     // Initialize ZigBee stack.
@@ -69,6 +72,7 @@ void ZigBeeApp::task() {
     esp_zb_core_action_handler_register([](esp_zb_core_action_callback_id_t callback_id, const void* message) {
         return APP_INSTANCE->action_handler(callback_id, message);
     });
+    esp_zb_raw_command_handler_register([](uint8_t bufid) { return APP_INSTANCE->command_handler(bufid); });
     ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
 
     ESP_ERROR_CHECK(esp_zb_start(false));
@@ -110,13 +114,48 @@ esp_err_t ZigBeeApp::attribute_handler(const esp_zb_zcl_set_attr_value_message_t
     ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)",
              message->info.dst_endpoint, message->info.cluster, message->attribute.id, message->attribute.data.size);
 
-    for (const auto endpoint : _endpoints) {
-        if (endpoint->get_endpoint_id() == message->info.dst_endpoint) {
-            endpoint->attribute_handler(message);
-        }
+    const auto endpoint = get_endpoint_by_id(message->info.dst_endpoint);
+    if (endpoint) {
+        return endpoint->attribute_handler(message);
     }
 
     return ESP_OK;
+}
+
+ZigBeeEndpoint* ZigBeeApp::get_endpoint_by_id(uint8_t endpoint_id) {
+    for (const auto endpoint : _endpoints) {
+        if (endpoint->get_endpoint_id() == endpoint_id) {
+            return endpoint;
+        }
+    }
+
+    return nullptr;
+}
+
+#define MAX_FRAME_DATA_SIZE 110
+
+bool ZigBeeApp::command_handler(uint8_t bufid) {
+    uint8_t response_buf[MAX_FRAME_DATA_SIZE];
+
+    zb_zcl_parsed_hdr_t* cmd_info = ZB_BUF_GET_PARAM(bufid, zb_zcl_parsed_hdr_t);
+
+    ZigBeeStream request((uint8_t*)zb_buf_begin(bufid), zb_buf_len(bufid));
+    ZigBeeStream response(response_buf, MAX_FRAME_DATA_SIZE);
+
+    ESP_LOGV(TAG, "Received command: cluster(0x%x), command(0x%x)", cmd_info->cluster_id, cmd_info->cmd_id);
+
+    // List through all ZigBee EPs and call the callback function, with the message
+    const auto endpoint = get_endpoint_by_id(cmd_info->addr_data.common_data.dst_endpoint);
+    if (endpoint) {
+        auto err = endpoint->handle_command(cmd_info, request, response);
+        if (err == ESP_ERR_NOT_SUPPORTED) {
+            return false;
+        }
+        ESP_ERROR_CHECK_WITHOUT_ABORT(err);
+        return true;
+    }
+
+    return false;
 }
 
 extern "C" void esp_zb_app_signal_handler(esp_zb_app_signal_t* signal_struct) {
