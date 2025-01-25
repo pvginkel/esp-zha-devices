@@ -1,5 +1,8 @@
 #pragma once
 
+#include <vector>
+
+#include "ZigBeeAttribute.h"
 #include "ZigBeeStream.h"
 #include "esp_zigbee_core.h"
 
@@ -13,11 +16,17 @@ extern "C" {
 #endif
 
 class ZigBeeEndpoint {
+    std::vector<ZigBeeAttribute*> _attributes;
+
 public:
+    ZigBeeAttributeBool* create_attribute_bool(uint16_t cluster_id, uint16_t attribute_id);
+    ZigBeeAttributeU8* create_attribute_u8(uint16_t cluster_id, uint16_t attribute_id);
+    ZigBeeAttributeU16* create_attribute_u16(uint16_t cluster_id, uint16_t attribute_id);
+
     virtual uint8_t get_endpoint_id() { return 10; }
     virtual esp_zb_ep_list_t* build_endpoint() = 0;
     virtual esp_err_t deferred_driver_init() { return ESP_OK; }
-    virtual esp_err_t attribute_handler(const esp_zb_zcl_set_attr_value_message_t* message) { return ESP_OK; }
+    esp_err_t attribute_handler(const esp_zb_zcl_set_attr_value_message_t* message);
     virtual esp_err_t initialize_endpoint(esp_zb_ep_list_t* ep_list) { return ESP_OK; }
     virtual esp_err_t handle_command(zb_zcl_parsed_hdr_t* cmd_info, ZigBeeStream& request, ZigBeeStream& response) {
         return ESP_ERR_NOT_SUPPORTED;

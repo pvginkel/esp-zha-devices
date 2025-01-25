@@ -95,6 +95,10 @@ esp_err_t ZigBeeApp::action_handler(esp_zb_core_action_callback_id_t callback_id
         case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
             return attribute_handler((esp_zb_zcl_set_attr_value_message_t*)message);
 
+        case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
+            // Ignore.
+            return ESP_OK;
+
         default:
             ESP_LOGW(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
             return ESP_OK;
