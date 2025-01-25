@@ -1,12 +1,11 @@
 #pragma once
 
-#include <esp32-hal-log.h>
-
 #include <list>
 
 #include "ZigBeeEndpoint.h"
 #include "esp_zigbee_core.h"
 #include "zdo/esp_zigbee_zdo_common.h"
+
 class ZigBeeEndpoint;
 
 typedef void (*voidFuncPtr)(void);

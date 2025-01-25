@@ -6,14 +6,18 @@
         "${config:idf.espIdfPathWin}/components/soc/esp32c6/include",
         "${config:idf.espIdfPath}/components/**",
         "${config:idf.espIdfPathWin}/components/**",
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/**",
+        "C:/Projects/C6Prototype/managed_components/espressif__esp-zboss-lib/include",
+        "C:/Projects/C6Prototype/managed_components/espressif__esp-zigbee-lib/include"
       ],
       "browse": {
         "path": [
           "${config:idf.espIdfPathWin}/components/soc/esp32c6/include",
           "${config:idf.espIdfPath}/components",
           "${config:idf.espIdfPathWin}/components",
-          "${workspaceFolder}"
+          "${workspaceFolder}",
+          "C:/Projects/C6Prototype/managed_components/espressif__esp-zboss-lib/include",
+          "C:/Projects/C6Prototype/managed_components/espressif__esp-zigbee-lib/include"
         ],
         "limitSymbolsToIncludedHeaders": true
       },

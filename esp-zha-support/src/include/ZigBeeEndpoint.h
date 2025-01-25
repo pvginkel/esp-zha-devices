@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ZigBeeCore.h"
+#include "esp_zigbee_core.h"
 
 /* Useful defines */
 #define ZB_CMD_TIMEOUT 10000  // 10 seconds
@@ -62,7 +63,6 @@ public:
     uint8_t getEndpoint() { return _endpoint; }
 
     void printBoundDevices();
-    void printBoundDevices(Print &print);
 
     std::list<zb_device_params_t *> getBoundDevices() const { return _bound_devices; }
 
