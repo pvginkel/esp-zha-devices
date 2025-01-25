@@ -3,12 +3,14 @@
     {
       "name": "Win32",
       "includePath": [
+        "${config:idf.espIdfPathWin}/components/soc/esp32c6/include",
         "${config:idf.espIdfPath}/components/**",
         "${config:idf.espIdfPathWin}/components/**",
         "${workspaceFolder}/**"
       ],
       "browse": {
         "path": [
+          "${config:idf.espIdfPathWin}/components/soc/esp32c6/include",
           "${config:idf.espIdfPath}/components",
           "${config:idf.espIdfPathWin}/components",
           "${workspaceFolder}"
