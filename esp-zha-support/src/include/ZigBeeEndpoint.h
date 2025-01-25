@@ -64,7 +64,7 @@ public:
 
     void printBoundDevices();
 
-    std::list<zb_device_params_t *> getBoundDevices() const { return _bound_devices; }
+    const std::vector<zb_device_params_t *> &getBoundDevices() const { return _bound_devices; }
 
     static bool bound() { return _is_bound; }
     static void allowMultipleBinding(bool bind) { _allow_multiple_binding = bind; }
@@ -104,7 +104,7 @@ protected:
     esp_zb_cluster_list_t *_cluster_list;
     static bool _is_bound;
     static bool _allow_multiple_binding;
-    std::list<zb_device_params_t *> _bound_devices;
+    std::vector<zb_device_params_t *> _bound_devices;
     SemaphoreHandle_t lock;
     zb_power_source_t _power_source;
 

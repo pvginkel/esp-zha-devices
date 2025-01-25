@@ -1,7 +1,8 @@
 #pragma once
 
-#include <list>
+#include <vector>
 
+#include "Callback.h"
 #include "ZigBeeEndpoint.h"
 #include "esp_zigbee_core.h"
 #include "zdo/esp_zigbee_zdo_common.h"
@@ -54,46 +55,49 @@ typedef enum { ZIGBEE_COORDINATOR = 0, ZIGBEE_ROUTER = 1, ZIGBEE_END_DEVICE = 2 
     }
 
 class ZigBeeCore {
-private:
     esp_zb_radio_config_t _radio_config;
     esp_zb_host_config_t _host_config;
     uint32_t _primary_channel_mask;
     int16_t _scan_status;
     uint8_t _scan_duration;
     bool _rx_on_when_idle;
+    std::vector<ZigBeeEndpoint *> _ep_objects;
 
     esp_zb_ep_list_t *_zb_ep_list;
     zigbee_role_t _role;
     bool _started;
-    bool _connected;
+    Callback<void> _started_cb;
 
     uint8_t _open_network;
     zigbee_scan_result_t *_scan_result;
-    SemaphoreHandle_t lock;
 
-    bool zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs);
-    static void scanCompleteCallback(esp_zb_zdp_status_t zdo_status, uint8_t count,
-                                     esp_zb_network_descriptor_t *nwk_descriptor);
-    const char *getDeviceTypeString(esp_zb_ha_standard_devices_t deviceId);
+    esp_err_t zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs);
+    void startupComplete();
+    void scanCompleteCallback(esp_zb_zdp_status_t zdo_status, uint8_t count,
+                              esp_zb_network_descriptor_t *nwk_descriptor);
     void searchBindings();
-    static void bindingTableCb(const esp_zb_zdo_binding_table_info_t *table_info, void *user_ctx);
+    void bindingTableCb(const esp_zb_zdo_binding_table_info_t *table_info, void *user_ctx);
+    esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message);
+    esp_err_t zb_attribute_set_handler(const esp_zb_zcl_set_attr_value_message_t *message);
+    esp_err_t zb_attribute_reporting_handler(const esp_zb_zcl_report_attr_message_t *message);
+    esp_err_t zb_cmd_read_attr_resp_handler(const esp_zb_zcl_cmd_read_attr_resp_message_t *message);
+    esp_err_t zb_configure_report_resp_handler(const esp_zb_zcl_cmd_config_report_resp_message_t *message);
+    esp_err_t zb_cmd_default_resp_handler(const esp_zb_zcl_cmd_default_resp_message_t *message);
+    void esp_zb_task();
+    void zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);
 
 public:
     ZigBeeCore();
     ~ZigBeeCore() {}
 
-    std::list<ZigBeeEndpoint *> ep_objects;
-
-    bool begin(zigbee_role_t role = ZIGBEE_END_DEVICE, bool erase_nvs = false);
-    bool begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
-    // bool end();
+    esp_err_t begin(zigbee_role_t role = ZIGBEE_END_DEVICE, bool erase_nvs = false);
+    esp_err_t begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
 
     bool started() { return _started; }
-    bool connected() { return _connected; }
+    void on_started(std::function<void(void)> func) { _started_cb.add(func); }
     zigbee_role_t getRole() { return _role; }
 
     void addEndpoint(ZigBeeEndpoint *ep);
-    // void removeEndpoint(ZigBeeEndpoint *ep);
 
     void setRadioConfig(esp_zb_radio_config_t config);
     esp_zb_radio_config_t getRadioConfig();
@@ -125,5 +129,3 @@ public:
     // Friend function declaration to allow access to private members
     friend void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct);
 };
-
-extern ZigBeeCore ZigBee;
