@@ -12,181 +12,71 @@ bool ZigBeeEndpoint::_allow_multiple_binding = false;
 
 // TODO: is_bound and allow_multiple_binding to make not static
 
-/* ZigBee End Device Class */
-ZigBeeEndpoint::ZigBeeEndpoint(uint8_t endpoint) {
-    _endpoint = endpoint;
-    ESP_LOGV(TAG, "Endpoint: %d", _endpoint);
-    _ep_config.endpoint = 0;
-    _cluster_list = nullptr;
-    _on_identify = nullptr;
-    if (!lock) {
-        lock = xSemaphoreCreateBinary();
-        if (lock == NULL) {
-            ESP_LOGE(TAG, "Semaphore creation failed");
-        }
+void ZigBeeEndpoint::begin() {
+    auto ep_config = buildEndpoint();
+
+    _ep_config = ep_config.ep_config;
+    _cluster_list = ep_config.cluster_list;
+    _power_source = ep_config.power_source;
+
+    ESP_LOGD(TAG, "Endpoint: %d, Device ID: 0x%04x", _ep_config.endpoint, _ep_config.app_device_id);
+
+    esp_zb_endpoint_set_identity(_cluster_list, ep_config.manufacturer_name, ep_config.model_identifier);
+
+    esp_zb_attribute_list_t *basic_cluster =
+        esp_zb_cluster_list_get_cluster(_cluster_list, ESP_ZB_ZCL_CLUSTER_ID_BASIC, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+    esp_zb_cluster_update_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_POWER_SOURCE_ID, (void *)&_power_source);
+
+    if (_power_source == ESP_ZB_ZCL_BASIC_POWER_SOURCE_BATTERY) {
+        // Call to esp_zb_power_config_cluster_add_attr is missing here. Is this necessary?
+        _battery_percentage_remaining = createAttributeU8(ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
+                                                          ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID);
     }
 }
 
-void ZigBeeEndpoint::setVersion(uint8_t version) { _ep_config.app_device_version = version; }
-
-void ZigBeeEndpoint::setManufacturerAndModel(const char *name, const char *model) {
-    // Convert manufacturer to ZCL string
-    size_t length = strlen(name);
-    if (length > 32) {
-        ESP_LOGE(TAG, "Manufacturer name is too long");
-        return;
-    }
-    // Allocate a new array of size length + 2 (1 for the length, 1 for null terminator)
-    char *zb_name = new char[length + 2];
-    // Store the length as the first element
-    zb_name[0] = static_cast<char>(length);  // Cast size_t to char
-    // Use memcpy to copy the characters to the result array
-    memcpy(zb_name + 1, name, length);
-    // Null-terminate the array
-    zb_name[length + 1] = '\0';
-
-    // Convert model to ZCL string
-    length = strlen(model);
-    if (length > 32) {
-        ESP_LOGE(TAG, "Model name is too long");
-        delete[] zb_name;
-        return;
-    }
-    char *zb_model = new char[length + 2];
-    zb_model[0] = static_cast<char>(length);
-    memcpy(zb_model + 1, model, length);
-    zb_model[length + 1] = '\0';
-
-    // Get the basic cluster and update the manufacturer and model attributes
-    esp_zb_attribute_list_t *basic_cluster =
-        esp_zb_cluster_list_get_cluster(_cluster_list, ESP_ZB_ZCL_CLUSTER_ID_BASIC, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
-    esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, (void *)zb_name);
-    esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, (void *)zb_model);
+ZigBeeAttributeBool *ZigBeeEndpoint::createAttributeBool(uint16_t cluster_id, uint16_t attribute_id) {
+    const auto attribute = new ZigBeeAttributeBool(getEndpoint(), cluster_id, attribute_id);
+    _attributes.push_back(attribute);
+    return attribute;
 }
 
-void ZigBeeEndpoint::setPowerSource(zb_power_source_t power_source, uint8_t battery_percentage) {
-    esp_zb_attribute_list_t *basic_cluster =
-        esp_zb_cluster_list_get_cluster(_cluster_list, ESP_ZB_ZCL_CLUSTER_ID_BASIC, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
-    esp_zb_cluster_update_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_POWER_SOURCE_ID, (void *)&power_source);
+ZigBeeAttributeU8 *ZigBeeEndpoint::createAttributeU8(uint16_t cluster_id, uint16_t attribute_id) {
+    const auto attribute = new ZigBeeAttributeU8(getEndpoint(), cluster_id, attribute_id);
+    _attributes.push_back(attribute);
+    return attribute;
+}
 
-    if (power_source == ZB_POWER_SOURCE_BATTERY) {
-        // Add power config cluster and battery percentage attribute
-        battery_percentage = battery_percentage * 2;
-        esp_zb_attribute_list_t *power_config_cluster = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG);
-        esp_zb_power_config_cluster_add_attr(power_config_cluster,
-                                             ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
-                                             (void *)&battery_percentage);
-        esp_zb_cluster_list_add_power_config_cluster(_cluster_list, power_config_cluster,
-                                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
-    }
-    _power_source = power_source;
+ZigBeeAttributeU16 *ZigBeeEndpoint::createAttributeU16(uint16_t cluster_id, uint16_t attribute_id) {
+    const auto attribute = new ZigBeeAttributeU16(getEndpoint(), cluster_id, attribute_id);
+    _attributes.push_back(attribute);
+    return attribute;
 }
 
 void ZigBeeEndpoint::setBatteryPercentage(uint8_t percentage) {
+    ESP_ERROR_ASSERT(_battery_percentage_remaining);
+
     // 100% = 200 in decimal, 0% = 0
     // Convert percentage to 0-200 range
     if (percentage > 100) {
         percentage = 100;
     }
-    percentage = percentage * 2;
-    esp_zb_lock_acquire(portMAX_DELAY);
-    esp_zb_zcl_set_attribute_val(_endpoint, ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-                                 ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, &percentage, false);
-    esp_zb_lock_release();
+
+    _battery_percentage_remaining->set(percentage * 2);
+
     ESP_LOGV(TAG, "Battery percentage updated");
 }
 
 void ZigBeeEndpoint::reportBatteryPercentage() {
-    /* Send report attributes command */
-    esp_zb_zcl_report_attr_cmd_t report_attr_cmd;
-    report_attr_cmd.address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT;
-    report_attr_cmd.attributeID = ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID;
-    report_attr_cmd.direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI;
-    report_attr_cmd.clusterID = ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG;
-    report_attr_cmd.zcl_basic_cmd.src_endpoint = _endpoint;
+    ESP_ERROR_ASSERT(_battery_percentage_remaining);
 
-    esp_zb_lock_acquire(portMAX_DELAY);
-    esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
-    esp_zb_lock_release();
+    _battery_percentage_remaining->report();
+
     ESP_LOGV(TAG, "Battery percentage reported");
-}
-
-char *ZigBeeEndpoint::readManufacturer(uint8_t endpoint, uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr) {
-    /* Read peer Manufacture Name & Model Identifier */
-    esp_zb_zcl_read_attr_cmd_t read_req;
-
-    if (short_addr != 0) {
-        read_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-        read_req.zcl_basic_cmd.dst_addr_u.addr_short = short_addr;
-    } else {
-        read_req.address_mode = ESP_ZB_APS_ADDR_MODE_64_ENDP_PRESENT;
-        memcpy(read_req.zcl_basic_cmd.dst_addr_u.addr_long, ieee_addr, sizeof(esp_zb_ieee_addr_t));
-    }
-
-    read_req.zcl_basic_cmd.src_endpoint = _endpoint;
-    read_req.zcl_basic_cmd.dst_endpoint = endpoint;
-    read_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_BASIC;
-
-    uint16_t attributes[] = {
-        ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID,
-    };
-    read_req.attr_number = ZB_ARRAY_LENTH(attributes);
-    read_req.attr_field = attributes;
-
-    // clear read manufacturer
-    _read_manufacturer = nullptr;
-
-    esp_zb_lock_acquire(portMAX_DELAY);
-    esp_zb_zcl_read_attr_cmd_req(&read_req);
-    esp_zb_lock_release();
-
-    // Wait for response or timeout
-    if (xSemaphoreTake(lock, ZB_CMD_TIMEOUT) != pdTRUE) {
-        ESP_LOGE(TAG, "Error while reading manufacturer");
-    }
-    return _read_manufacturer;
-}
-
-char *ZigBeeEndpoint::readModel(uint8_t endpoint, uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr) {
-    /* Read peer Manufacture Name & Model Identifier */
-    esp_zb_zcl_read_attr_cmd_t read_req;
-
-    if (short_addr != 0) {
-        read_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-        read_req.zcl_basic_cmd.dst_addr_u.addr_short = short_addr;
-    } else {
-        read_req.address_mode = ESP_ZB_APS_ADDR_MODE_64_ENDP_PRESENT;
-        memcpy(read_req.zcl_basic_cmd.dst_addr_u.addr_long, ieee_addr, sizeof(esp_zb_ieee_addr_t));
-    }
-
-    read_req.zcl_basic_cmd.src_endpoint = _endpoint;
-    read_req.zcl_basic_cmd.dst_endpoint = endpoint;
-    read_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_BASIC;
-
-    uint16_t attributes[] = {
-        ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID,
-    };
-    read_req.attr_number = ZB_ARRAY_LENTH(attributes);
-    read_req.attr_field = attributes;
-
-    // clear read model
-    _read_model = nullptr;
-
-    esp_zb_lock_acquire(portMAX_DELAY);
-    esp_zb_zcl_read_attr_cmd_req(&read_req);
-    esp_zb_lock_release();
-
-    // Wait for response or timeout
-    if (xSemaphoreTake(lock, ZB_CMD_TIMEOUT) != pdTRUE) {
-        ESP_LOGE(TAG, "Error while reading model");
-    }
-    return _read_model;
 }
 
 void ZigBeeEndpoint::printBoundDevices() {
     ESP_LOGI(TAG, "Bound devices:");
-    for ([[maybe_unused]]
-         const auto &device : _bound_devices) {
+    for (const auto &device : _bound_devices) {
         ESP_LOGI(TAG,
                  "Device on endpoint %d, short address: 0x%x, ieee address: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
                  device->endpoint, device->short_addr, device->ieee_addr[7], device->ieee_addr[6], device->ieee_addr[5],
@@ -195,37 +85,16 @@ void ZigBeeEndpoint::printBoundDevices() {
     }
 }
 
-void ZigBeeEndpoint::zbReadBasicCluster(const esp_zb_zcl_attribute_t *attribute) {
-    /* Basic cluster attributes */
-    if (attribute->id == ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID &&
-        attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING && attribute->data.value) {
-        zbstring_t *zbstr = (zbstring_t *)attribute->data.value;
-        char *string = (char *)malloc(zbstr->len + 1);
-        memcpy(string, zbstr->data, zbstr->len);
-        string[zbstr->len] = '\0';
-        ESP_LOGI(TAG, "Peer Manufacturer is \"%s\"", string);
-        _read_manufacturer = string;
-        xSemaphoreGive(lock);
-    }
-    if (attribute->id == ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID &&
-        attribute->data.type == ESP_ZB_ZCL_ATTR_TYPE_CHAR_STRING && attribute->data.value) {
-        zbstring_t *zbstr = (zbstring_t *)attribute->data.value;
-        char *string = (char *)malloc(zbstr->len + 1);
-        memcpy(string, zbstr->data, zbstr->len);
-        string[zbstr->len] = '\0';
-        ESP_LOGI(TAG, "Peer Model is \"%s\"", string);
-        _read_model = string;
-        xSemaphoreGive(lock);
-    }
-}
-
 void ZigBeeEndpoint::zbIdentify(const esp_zb_zcl_set_attr_value_message_t *message) {
     if (message->attribute.id == ESP_ZB_ZCL_CMD_IDENTIFY_IDENTIFY_ID &&
         message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16) {
-        if (_on_identify != NULL) {
-            _on_identify(*(uint16_t *)message->attribute.data.value);
-        }
+        _identify.call(*(uint16_t *)message->attribute.data.value);
     } else {
         ESP_LOGW(TAG, "Other identify commands are not implemented yet.");
     }
+}
+
+void ZigBeeEndpoint::addBoundDevice(zb_device_params_t *device) {
+    _bound_devices.push_back(device);
+    _is_bound = true;
 }

@@ -3,19 +3,19 @@
 #include <vector>
 
 #include "Callback.h"
-#include "ZigBeeEndpoint.h"
 #include "esp_zigbee_core.h"
 #include "zdo/esp_zigbee_zdo_common.h"
 
 class ZigBeeEndpoint;
 
-typedef void (*voidFuncPtr)(void);
-typedef void (*voidFuncPtrArg)(void *);
-
 typedef esp_zb_network_descriptor_t zigbee_scan_result_t;
 
 // enum of ZigBee Roles
-typedef enum { ZIGBEE_COORDINATOR = 0, ZIGBEE_ROUTER = 1, ZIGBEE_END_DEVICE = 2 } zigbee_role_t;
+typedef enum {
+    ZIGBEE_COORDINATOR = 0,
+    ZIGBEE_ROUTER = 1,
+    ZIGBEE_END_DEVICE = 2,
+} zigbee_role_t;
 
 #define ZB_SCAN_RUNNING (-1)
 #define ZB_SCAN_FAILED (-2)
@@ -34,24 +34,30 @@ typedef enum { ZIGBEE_COORDINATOR = 0, ZIGBEE_ROUTER = 1, ZIGBEE_END_DEVICE = 2 
             },                                                       \
     }
 
-#define ZIGBEE_DEFAULT_ROUTER_CONFIG()                                                       \
-    {                                                                                        \
-        .esp_zb_role = ESP_ZB_DEVICE_TYPE_ROUTER, .install_code_policy = false, .nwk_cfg = { \
-            .zczr_cfg =                                                                      \
-                {                                                                            \
-                    .max_children = 10,                                                      \
-                },                                                                           \
-        }                                                                                    \
+#define ZIGBEE_DEFAULT_ROUTER_CONFIG()            \
+    {                                             \
+        .esp_zb_role = ESP_ZB_DEVICE_TYPE_ROUTER, \
+        .install_code_policy = false,             \
+        .nwk_cfg =                                \
+            {                                     \
+                .zczr_cfg =                       \
+                    {                             \
+                        .max_children = 10,       \
+                    },                            \
+            },                                    \
     }
 
-#define ZIGBEE_DEFAULT_COORDINATOR_CONFIG()                                                       \
-    {                                                                                             \
-        .esp_zb_role = ESP_ZB_DEVICE_TYPE_COORDINATOR, .install_code_policy = false, .nwk_cfg = { \
-            .zczr_cfg =                                                                           \
-                {                                                                                 \
-                    .max_children = 10,                                                           \
-                },                                                                                \
-        }                                                                                         \
+#define ZIGBEE_DEFAULT_COORDINATOR_CONFIG()            \
+    {                                                  \
+        .esp_zb_role = ESP_ZB_DEVICE_TYPE_COORDINATOR, \
+        .install_code_policy = false,                  \
+        .nwk_cfg =                                     \
+            {                                          \
+                .zczr_cfg =                            \
+                    {                                  \
+                        .max_children = 10,            \
+                    },                                 \
+            },                                         \
     }
 
 class ZigBeeCore {
@@ -94,7 +100,7 @@ public:
     esp_err_t begin(esp_zb_cfg_t *role_cfg, bool erase_nvs = false);
 
     bool started() { return _started; }
-    void on_started(std::function<void(void)> func) { _started_cb.add(func); }
+    void onStarted(std::function<void(void)> func) { _started_cb.add(func); }
     zigbee_role_t getRole() { return _role; }
 
     void addEndpoint(ZigBeeEndpoint *ep);

@@ -2,6 +2,8 @@
 
 #include "ZigBeeCore.h"
 
+#include "ZigBeeEndpoint.h"
+
 LOG_TAG(ZigBeeCore);
 
 static ZigBeeCore *APP_INSTANCE = nullptr;
@@ -26,27 +28,19 @@ ZigBeeCore::ZigBeeCore() {
     _rx_on_when_idle = true;
 }
 
-esp_err_t ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
-    _role = (zigbee_role_t)role_cfg->esp_zb_role;
-    return zigbeeInit(role_cfg, erase_nvs);
-}
-
 esp_err_t ZigBeeCore::begin(zigbee_role_t role, bool erase_nvs) {
     switch (role) {
         case ZIGBEE_COORDINATOR: {
-            _role = ZIGBEE_COORDINATOR;
-            esp_zb_cfg_t zb_nwk_cfg = ZIGBEE_DEFAULT_COORDINATOR_CONFIG();
-            return zigbeeInit(&zb_nwk_cfg, erase_nvs);
+            esp_zb_cfg_t role_cfg = ZIGBEE_DEFAULT_COORDINATOR_CONFIG();
+            return begin(&role_cfg, erase_nvs);
         }
         case ZIGBEE_ROUTER: {
-            _role = ZIGBEE_ROUTER;
-            esp_zb_cfg_t zb_nwk_cfg = ZIGBEE_DEFAULT_ROUTER_CONFIG();
-            return zigbeeInit(&zb_nwk_cfg, erase_nvs);
+            esp_zb_cfg_t role_cfg = ZIGBEE_DEFAULT_ROUTER_CONFIG();
+            return begin(&role_cfg, erase_nvs);
         }
         case ZIGBEE_END_DEVICE: {
-            _role = ZIGBEE_END_DEVICE;
-            esp_zb_cfg_t zb_nwk_cfg = ZIGBEE_DEFAULT_ED_CONFIG();
-            return zigbeeInit(&zb_nwk_cfg, erase_nvs);
+            esp_zb_cfg_t role_cfg = ZIGBEE_DEFAULT_ED_CONFIG();
+            return begin(&role_cfg, erase_nvs);
         }
         default:
             ESP_LOGE(TAG, "Invalid ZigBee Role");
@@ -54,15 +48,15 @@ esp_err_t ZigBeeCore::begin(zigbee_role_t role, bool erase_nvs) {
     }
 }
 
+esp_err_t ZigBeeCore::begin(esp_zb_cfg_t *role_cfg, bool erase_nvs) {
+    _role = (zigbee_role_t)role_cfg->esp_zb_role;
+    return zigbeeInit(role_cfg, erase_nvs);
+}
+
 void ZigBeeCore::addEndpoint(ZigBeeEndpoint *ep) {
     _ep_objects.push_back(ep);
 
-    ESP_LOGD(TAG, "Endpoint: %d, Device ID: 0x%04x", ep->_endpoint, ep->_device_id);
-    // Register clusters and ep_list to the ZigBeeCore class's ep_list
-    if (ep->_ep_config.endpoint == 0 || ep->_cluster_list == nullptr) {
-        ESP_LOGE(TAG, "Endpoint config or Cluster list is not initialized, EP not added to ZigBeeCore's EP list");
-        return;
-    }
+    ep->begin();
 
     esp_zb_ep_list_add_ep(_zb_ep_list, ep->_cluster_list, ep->_ep_config);
 }
@@ -99,8 +93,9 @@ esp_err_t ZigBeeCore::zigbeeInit(esp_zb_cfg_t *zb_cfg, bool erase_nvs) {
         // print the list of ZigBee EPs from _ep_objects
         ESP_LOGI(TAG, "List of registered ZigBee EPs:");
         for (const auto ep_object : _ep_objects) {
-            ESP_LOGI(TAG, "Endpoint: %d, Device ID: 0x%04x", ep_object->_endpoint, ep_object->_device_id);
-            if (ep_object->_power_source == ZB_POWER_SOURCE_BATTERY) {
+            ESP_LOGI(TAG, "Endpoint: %d, Device ID: 0x%04x", ep_object->_ep_config.endpoint,
+                     ep_object->_ep_config.app_device_id);
+            if (ep_object->_power_source == ESP_ZB_ZCL_BASIC_POWER_SOURCE_BATTERY) {
                 edBatteryPowered = true;
             }
         }
@@ -289,12 +284,13 @@ void ZigBeeCore::zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                 */
                 // for each endpoint in the list call the findEndpoint function if not bounded or allowed to bind
                 // multiple devices
-                for (const auto ep_object : _ep_objects) {
-                    if (!ep_object->bound() || ep_object->epAllowMultipleBinding()) {
+
+                if (!ZigBeeEndpoint::isBound() || ZigBeeEndpoint::getAllowMultipleBinding()) {
+                    for (const auto ep_object : _ep_objects) {
                         // Check if the device is already bound
                         bool found = false;
                         // Get the list of devices bound to the EP
-                        for (const auto bound_device : ep_object->getBoundDevices()) {
+                        for (const auto bound_device : ep_object->_bound_devices) {
                             if ((bound_device->short_addr == dev_annce_params->device_short_addr) ||
                                 (memcmp(bound_device->ieee_addr, dev_annce_params->ieee_addr, 8) == 0)) {
                                 found = true;
@@ -571,14 +567,9 @@ esp_err_t ZigBeeCore::zb_cmd_read_attr_resp_handler(const esp_zb_zcl_cmd_read_at
                          variable->status, message->info.cluster, variable->attribute.id, variable->attribute.data.type,
                          variable->attribute.data.value ? *(uint8_t *)variable->attribute.data.value : 0);
                 if (variable->status == ESP_ZB_ZCL_STATUS_SUCCESS) {
-                    if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_BASIC) {
-                        ep_object->zbReadBasicCluster(
-                            &variable->attribute);  // method zbReadBasicCluster implemented in the common EP class
-                    } else {
-                        ep_object->zbAttributeRead(
-                            message->info.cluster,
-                            &variable->attribute);  // method zbAttributeRead must be implemented in specific EP class
-                    }
+                    ep_object->zbAttributeRead(
+                        message->info.cluster,
+                        &variable->attribute);  // method zbAttributeRead must be implemented in specific EP class
                 }
                 variable = variable->next;
             }
